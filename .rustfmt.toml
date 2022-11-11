@@ -1,0 +1,10 @@
+# NOTE(hl): because i am using single monitor
+max_width = 100
+# for this we need nightly
+imports_granularity = "Crate"
+# this is nice
+reorder_impl_items = true
+# why is this not default?
+use_field_init_shorthand = true
+wrap_comments = true
+
