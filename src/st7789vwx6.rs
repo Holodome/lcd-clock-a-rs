@@ -83,6 +83,10 @@ where
         self.spi.write(cmds).map_err(|_| Error::BusWrite)
     }
 
+    fn send_command(&mut self, cmd: Command) -> Result<(), Error> {
+        self.send_commands(&[cmd as u8])
+    }
+
     fn send_data(&mut self, data: &[u8]) -> Result<(), Error> {
         self.pins.dc().set_high().unwrap_infallible();
         self.spi.write(data).map_err(|_| Error::BusWrite)
@@ -118,21 +122,74 @@ where
         delay.delay_us(10);
     }
 
+    fn init_display(&mut self) -> Result<(), Error> {
+        // refresh from left to right, bottom from to top, use rgb
+        self.send_command(Command::MADCTL)?;
+        self.send_data(&[0b0000_0000])?;
+        // 65k 16 bits/pixel colors
+        self.send_command(Command::COLMOD)?;
+        self.send_data(&[0b0101_0101])?;
+        // have no idea what it does...
+        self.send_command(Command::PORCTRL)?;
+        self.send_data(&[0x0C, 0x0C, 0x00, 0x33, 0x33])?;
+
+        self.send_command(Command::GCTRL)?;
+        self.send_data(&[0x35])?;
+
+        self.send_command(Command::VCOMS)?;
+        self.send_data(&[0x19])?;
+
+        self.send_command(Command::LCMCTRL)?;
+        self.send_data(&[0x2C])?;
+
+        self.send_command(Command::VDVVRHEN)?;
+        self.send_data(&[0x01])?;
+
+        self.send_command(Command::VRHS)?;
+        self.send_data(&[0x12])?;
+
+        self.send_command(Command::VDVS)?;
+        self.send_data(&[0x20])?;
+
+        self.send_command(Command::FRCTRL2)?;
+        self.send_data(&[0x0F])?;
+
+        self.send_command(Command::PWCTRL1)?;
+        self.send_data(&[0xA4, 0xA1])?;
+
+        self.send_command(Command::PVGAMCTRL)?;
+        self.send_data(&[
+            0xD0, 0x04, 0x0D, 0x11, 0x13, 0x2B, 0x3F, 0x54, 0x4C, 0x18, 0x0D, 0x0B, 0x1F, 0x23,
+        ])?;
+
+        self.send_command(Command::NVGAMCTRL)?;
+        self.send_data(&[
+            0xD0, 0x04, 0x0C, 0x11, 0x13, 0x2C, 0x3F, 0x44, 0x51, 0x2F, 0x1F, 0x1F, 0x20, 0x23,
+        ])?;
+
+        self.send_command(Command::INVON)?;
+        // exit sleep mode
+        self.send_command(Command::SLPOUT)?;
+        // turn on display
+        self.send_command(Command::DISPON)?;
+
+        Ok(())
+    }
+
     pub fn init<DELAY: DelayUs<u32>>(&mut self, delay: &mut DELAY) -> Result<(), Error> {
         self.hard_reset(delay);
 
-        // refresh from left to right, bottom from to top, use rgb
-        self.send_commands(&[Command::MADCTL as u8])?;
-        self.send_data(&[0b0000_0000])?;
-        // 65k 16 bits/pixel colors
-        self.send_commands(&[Command::COLMOD as u8])?;
-        self.send_data(&[0b0101_0101])?;
-        // have no idea what it does...
-        self.send_commands(&[Command::PORCTRL as u8])?;
-        self.send_data(&[0x0C, 0x0C, 0x00, 0x33, 0x33])?;
-        // ...
-        self.send_commands(&[Command::GCTRL as u8])?;
-        self.send_data(&[0x35])?;
+        // do this for all displays
+        for display in [
+            Display::D1,
+            Display::D2,
+            Display::D3,
+            Display::D4,
+            Display::D5,
+            Display::D6,
+        ] {
+            self.with_cs(display, Self::init_display)?;
+        }
 
         Ok(())
     }
@@ -141,7 +198,9 @@ where
         self.with_cs(display, |d| {
             d.set_region(x, y, x, y)?;
             d.send_commands(&[Command::RAMWR as u8])?;
-            d.send_data(&color.to_be_bytes())
+            d.send_data(&color.to_be_bytes())?;
+
+            Ok(())
         })
     }
 }
@@ -195,6 +254,7 @@ impl<
     }
 }
 
+#[derive(Debug)]
 pub enum Error {
     OutOfBounds,
     BusWrite,
@@ -208,7 +268,31 @@ enum Command {
     /// Porch setting
     PORCTRL = 0xB2,
     /// Gate control
-    GCTRL = 0xb7,
+    GCTRL = 0xB7,
+    /// VCOMS setting
+    VCOMS = 0xBB,
+    /// LCM Control
+    LCMCTRL = 0xC0,
+    /// VDV and VRH command enable
+    VDVVRHEN = 0xC2,
+    /// VRH set
+    VRHS = 0xC3,
+    /// VDV set
+    VDVS = 0xC4,
+    /// Frame rate control
+    FRCTRL2 = 0xC6,
+    /// Power control
+    PWCTRL1 = 0xD0,
+    /// Positive voltage gamma control
+    PVGAMCTRL = 0xE0,
+    /// Negative voltage gamma control
+    NVGAMCTRL = 0xE1,
+    /// Display inversion on
+    INVON = 0x21,
+    /// Sleep out
+    SLPOUT = 0x11,
+    /// Display on
+    DISPON = 0x29,
     /// Column address set
     CASET = 0x2A,
     /// Row address set
