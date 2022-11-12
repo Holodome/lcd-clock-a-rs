@@ -5,6 +5,9 @@ use embedded_hal::{
 };
 use unwrap_infallible::UnwrapInfallible;
 
+const WIDTH: u16 = 135;
+const HEIGHT: u16 = 240;
+
 #[derive(Clone, Copy)]
 pub enum Display {
     D1,
@@ -34,6 +37,19 @@ impl Display {
             (value & 0x2 != 0).into(),
             (value & 0x4 != 0).into(),
         )
+    }
+
+    pub fn all() -> impl Iterator<Item = Self> {
+        [
+            Display::D1,
+            Display::D2,
+            Display::D3,
+            Display::D4,
+            Display::D5,
+            Display::D6,
+        ]
+        .iter()
+        .copied()
     }
 }
 
@@ -206,6 +222,76 @@ where
 
             Ok(())
         })
+    }
+
+    pub fn set_pixels(
+        &mut self,
+        display: Display,
+        x_start: u16,
+        y_start: u16,
+        x_end: u16,
+        y_end: u16,
+        colors: &[u8],
+    ) -> Result<(), Error> {
+        self.with_cs(display, |d| {
+            d.set_region(x_start, y_start, x_end, y_end)?;
+            d.send_commands(&[Command::RAMWR as u8])?;
+            d.send_data(colors)?;
+
+            Ok(())
+        })
+    }
+
+    pub fn set_pixels_iter<T>(
+        &mut self,
+        display: Display,
+        x_start: u16,
+        y_start: u16,
+        x_end: u16,
+        y_end: u16,
+        colors: T,
+    ) -> Result<(), Error>
+    where
+        T: IntoIterator<Item = u8>,
+    {
+        self.with_cs(display, |d| {
+            d.set_region(x_start, y_start, x_end, y_end)?;
+            d.send_commands(&[Command::RAMWR as u8])?;
+
+            let mut buf = [0u8; 256];
+            let mut i = 0;
+
+            for v in colors.into_iter() {
+                buf[i] = v;
+                i += 1;
+
+                if i == buf.len() {
+                    d.send_data(&buf)?;
+                    i = 0;
+                }
+            }
+
+            if i != 0 {
+                d.send_data(&buf)?;
+            }
+
+            Ok(())
+        })
+    }
+
+    pub fn clear_all(&mut self, color: u16) -> Result<(), Error> {
+        for display in Display::all() {
+            self.set_pixels_iter(
+                display,
+                0,
+                0,
+                WIDTH,
+                HEIGHT,
+                (0..(WIDTH * HEIGHT)).map(|_| color.to_be_bytes()).flatten(),
+            )?;
+        }
+
+        Ok(())
     }
 }
 

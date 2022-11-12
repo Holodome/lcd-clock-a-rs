@@ -70,17 +70,11 @@ fn main() -> ! {
 
     let mut st7789 = ST7789VWx6::new((csa1, csa2, csa3, dc, rst), spi);
     st7789.init(&mut delay).unwrap();
+    st7789.clear_all(0xFFFF).unwrap();
 
     for x in 0..135 {
         for y in 0..240 {
-            for display in [
-                Display::D1,
-                Display::D2,
-                Display::D3,
-                Display::D4,
-                Display::D5,
-                Display::D6,
-            ] {
+            for display in [Display::D1] {
                 st7789.set_pixel(display, x, y, 0xFF00).unwrap();
             }
         }
