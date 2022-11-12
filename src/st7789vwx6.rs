@@ -1,3 +1,16 @@
+//! Driver fot ST7789VW
+//!
+//! LCD-Nixie-Clock has 6 135x240 displays. They all use SPI interface on a
+//! single line and use 3 CS (chip select) pins to select display per draw
+//! command.
+//!
+//! The system has some hardware quirks that we have to consider - thus the
+//! implementation of display driver is not generic. Firstly, there are some
+//! hardware settings that had to be copied from sample code provided by
+//! waveshare. They regard voltage and gamma - things that are usually not
+//! covered in generic drivers. Secondly, screen locations have to be offsetted.
+//! Thirdly, there are 3 CS lines - instead of usual for these kind of displays
+//! 1.
 use core::convert::Infallible;
 use embedded_hal::{
     blocking::{delay::DelayUs, spi::Write},
@@ -8,6 +21,7 @@ use unwrap_infallible::UnwrapInfallible;
 const WIDTH: u16 = 135;
 const HEIGHT: u16 = 240;
 
+/// One of the six displays left-to-right.
 #[derive(Clone, Copy)]
 pub enum Display {
     D1,
@@ -199,15 +213,7 @@ where
     pub fn init<DELAY: DelayUs<u32>>(&mut self, delay: &mut DELAY) -> Result<(), Error> {
         self.hard_reset(delay);
 
-        // do this for all displays
-        for display in [
-            Display::D1,
-            Display::D2,
-            Display::D3,
-            Display::D4,
-            Display::D5,
-            Display::D6,
-        ] {
+        for display in Display::all() {
             self.with_cs(display, Self::init_display)?;
         }
 
@@ -242,7 +248,7 @@ where
         })
     }
 
-    pub fn set_pixels_iter<T>(
+    pub fn set_pixels_raw_iter<T>(
         &mut self,
         display: Display,
         x_start: u16,
