@@ -73,23 +73,18 @@ fn main() -> ! {
 
     for x in 0..135 {
         for y in 0..240 {
-            st7789.set_pixel(Display::D1, x, y, 0x00).unwrap();
+            for display in [
+                Display::D1,
+                Display::D2,
+                Display::D3,
+                Display::D4,
+                Display::D5,
+                Display::D6,
+            ] {
+                st7789.set_pixel(display, x, y, 0xFF00).unwrap();
+            }
         }
     }
-
-    // let buzzer = pins.gpio14.into_push_pull_output();
-
-    // let mut pwm_slices = hal::pwm::Slices::new(dp.PWM, &mut dp.RESETS);
-    // let pwm = &mut pwm_slices.pwm7;
-    // pwm.set_ph_correct();
-    // pwm.enable();
-
-    // let channel = &mut pwm.channel_a;
-    // channel.output_to(buzzer);
-
-    // channel.set_duty(u16::MAX);
-    // delay.delay_ms(1000);
-    // channel.set_duty(0);
 
     loop {}
 }

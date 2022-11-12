@@ -94,20 +94,24 @@ where
 
     fn set_region(
         &mut self,
-        x_start: u16,
-        y_start: u16,
-        x_end: u16,
-        y_end: u16,
+        mut x_start: u16,
+        mut y_start: u16,
+        mut x_end: u16,
+        mut y_end: u16,
     ) -> Result<(), Error> {
+        x_start += 52;
+        x_end += 52;
+        y_start += 40;
+        y_end += 40;
         self.send_commands(&[Command::CASET as u8])?;
         let mut x = [0u8; 4];
-        x[0..2].copy_from_slice(&x_start.to_le_bytes());
-        x[2..4].copy_from_slice(&x_end.to_le_bytes());
+        x[0..2].copy_from_slice(&x_start.to_be_bytes());
+        x[2..4].copy_from_slice(&x_end.to_be_bytes());
         self.send_data(&x)?;
         self.send_commands(&[Command::RASET as u8])?;
         let mut y = [0u8; 4];
-        y[0..2].copy_from_slice(&y_start.to_le_bytes());
-        y[2..4].copy_from_slice(&y_end.to_le_bytes());
+        y[0..2].copy_from_slice(&y_start.to_be_bytes());
+        y[2..4].copy_from_slice(&y_end.to_be_bytes());
         self.send_data(&y)?;
 
         Ok(())
