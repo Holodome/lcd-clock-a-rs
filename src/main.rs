@@ -22,6 +22,7 @@ use rp_pico::{
 };
 
 mod bell;
+mod ds3231;
 mod pins;
 mod st7789vwx6;
 

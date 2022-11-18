@@ -18,8 +18,8 @@ use embedded_hal::{
 };
 use unwrap_infallible::UnwrapInfallible;
 
-const WIDTH: u16 = 135;
-const HEIGHT: u16 = 240;
+pub const WIDTH: u16 = 135;
+pub const HEIGHT: u16 = 240;
 
 /// One of the six displays left-to-right.
 #[derive(Clone, Copy)]
@@ -70,11 +70,27 @@ impl Display {
 pub struct ST7789VWx6<PINS, SPI> {
     pins: PINS,
     spi: SPI,
+
+    width: u16,
+    height: u16,
 }
 
 impl<PINS, SPI> ST7789VWx6<PINS, SPI> {
-    pub fn new(pins: PINS, spi: SPI) -> Self {
-        Self { pins, spi }
+    pub fn new(pins: PINS, spi: SPI, width: u16, height: u16) -> Self {
+        Self {
+            pins,
+            spi,
+            width,
+            height,
+        }
+    }
+
+    pub fn width(&self) -> u16 {
+        self.width
+    }
+
+    pub fn height(&self) -> u16 {
+        self.height
     }
 }
 
@@ -287,12 +303,12 @@ where
 
     pub fn clear_all(&mut self, color: u16) -> Result<(), Error> {
         for display in Display::all() {
-            self.set_pixels_iter(
+            self.set_pixels_raw_iter(
                 display,
                 0,
                 0,
-                WIDTH,
-                HEIGHT,
+                self.width(),
+                self.height(),
                 (0..(WIDTH * HEIGHT)).map(|_| color.to_be_bytes()).flatten(),
             )?;
         }
@@ -341,11 +357,11 @@ impl<
         &mut self.2
     }
 
-    fn dc(&mut self) -> &mut Self::DC {
+    fn dc(&mut self) -> &mut DC {
         &mut self.3
     }
 
-    fn rst(&mut self) -> &mut Self::RST {
+    fn rst(&mut self) -> &mut RST {
         &mut self.4
     }
 }
