@@ -10,7 +10,8 @@
 //! waveshare. They regard voltage and gamma - things that are usually not
 //! covered in generic drivers. Secondly, screen locations have to be offsetted.
 //! Thirdly, there are 3 CS lines - instead of usual for these kind of displays
-//! 1.
+//! 1. Waveshare most probably placed a binary decoder circuit that transforms
+//! display number set on 3 CS lines into CS for each display independently.
 use core::convert::Infallible;
 use embedded_hal::{
     blocking::{delay::DelayUs, spi::Write},
@@ -22,6 +23,7 @@ pub const WIDTH: u16 = 135;
 pub const HEIGHT: u16 = 240;
 
 /// One of the six displays left-to-right.
+/// These are identical and are driven by 3 CS lines.
 #[derive(Clone, Copy)]
 pub enum Display {
     D1,
@@ -33,6 +35,7 @@ pub enum Display {
 }
 
 impl Display {
+    /// Order of displays is inversed
     fn into_cs_value(self) -> usize {
         match self {
             Self::D1 => 5,
@@ -67,6 +70,7 @@ impl Display {
     }
 }
 
+/// Driver for 6 ST7789VW displays.
 pub struct ST7789VWx6<PINS, SPI> {
     pins: PINS,
     spi: SPI,
@@ -149,12 +153,12 @@ where
         x_end += 52;
         y_start += 40;
         y_end += 40;
-        self.send_commands(&[Command::CASET as u8])?;
+        self.send_command(Command::CASET)?;
         let mut x = [0u8; 4];
         x[0..2].copy_from_slice(&x_start.to_be_bytes());
         x[2..4].copy_from_slice(&x_end.to_be_bytes());
         self.send_data(&x)?;
-        self.send_commands(&[Command::RASET as u8])?;
+        self.send_command(Command::RASET)?;
         let mut y = [0u8; 4];
         y[0..2].copy_from_slice(&y_start.to_be_bytes());
         y[2..4].copy_from_slice(&y_end.to_be_bytes());
@@ -239,7 +243,7 @@ where
     pub fn set_pixel(&mut self, display: Display, x: u16, y: u16, color: u16) -> Result<(), Error> {
         self.with_cs(display, |d| {
             d.set_region(x, y, x, y)?;
-            d.send_commands(&[Command::RAMWR as u8])?;
+            d.send_command(Command::RAMWR)?;
             d.send_data(&color.to_be_bytes())?;
 
             Ok(())
@@ -257,7 +261,7 @@ where
     ) -> Result<(), Error> {
         self.with_cs(display, |d| {
             d.set_region(x_start, y_start, x_end, y_end)?;
-            d.send_commands(&[Command::RAMWR as u8])?;
+            d.send_command(Command::RAMWR)?;
             d.send_data(colors)?;
 
             Ok(())
@@ -278,7 +282,7 @@ where
     {
         self.with_cs(display, |d| {
             d.set_region(x_start, y_start, x_end, y_end)?;
-            d.send_commands(&[Command::RAMWR as u8])?;
+            d.send_command(Command::RAMWR)?;
 
             let mut buf = [0u8; 256];
             let mut i = 0;

@@ -1,3 +1,7 @@
+//! Images used for displaying time and menu options on LCD's.
+//! These are embedded directly in executable using include_bytes!.
+//! Images are generated using build script (build.rs).
+
 use crate::lcd_clock::MenuOpt;
 
 pub struct Image(&'static [u8]);
