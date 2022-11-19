@@ -8,6 +8,41 @@ use embedded_hal::blocking::i2c::{Write, WriteRead};
 /// This address is specified in schematic for product.
 pub const ADDRESS: u16 = 0x68;
 
+#[derive(Debug, Clone, Copy)]
+pub enum Day {
+    Sunday = 1,
+    Monday = 2,
+    Tuesday = 3,
+    Wednesday = 4,
+    Thursday = 5,
+    Friday = 6,
+    Saturday = 7,
+}
+
+impl TryFrom<u8> for Day {
+    type Error = Error;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        use Day::*;
+        match value {
+            1 => Ok(Sunday),
+            2 => Ok(Monday),
+            3 => Ok(Tuesday),
+            4 => Ok(Wednesday),
+            5 => Ok(Thursday),
+            6 => Ok(Friday),
+            7 => Ok(Saturday),
+            _ => Err(Error::DaysRange),
+        }
+    }
+}
+
+impl From<Day> for u8 {
+    fn from(value: Day) -> Self {
+        value as u8
+    }
+}
+
 #[derive(Debug)]
 pub struct Calendar {
     year: u16,
@@ -51,7 +86,11 @@ where
     }
 
     pub fn set_seconds(&mut self, secs: u8) -> Result<(), Error> {
-        self.write_reg(Register::Seconds, secs.dec_to_bsd())
+        if (0..=59).contains(&secs) {
+            self.write_reg(Register::Seconds, secs.dec_to_bsd())
+        } else {
+            Err(Error::SecondsRange)
+        }
     }
 
     pub fn get_minutes(&mut self) -> Result<u8, Error> {
@@ -60,7 +99,11 @@ where
     }
 
     pub fn set_minutes(&mut self, mins: u8) -> Result<(), Error> {
-        self.write_reg(Register::Minutes, mins.dec_to_bsd())
+        if (0..=59).contains(&mins) {
+            self.write_reg(Register::Minutes, mins.dec_to_bsd())
+        } else {
+            Err(Error::MinutesRange)
+        }
     }
 
     fn set_hour_info(&mut self, info: HourInfo) -> Result<(), Error> {
@@ -88,15 +131,73 @@ where
     }
 
     pub fn set_hours(&mut self, hours: u8) -> Result<(), Error> {
+        if !(0..=23).contains(&hours) {
+            return Err(Error::HoursRange);
+        }
+
         let mode = extract_hour_info(self.read_reg(Register::Hours)?);
         let hours = match mode {
             HourInfo::H12PM | HourInfo::H12AM => {
-                H12_BIT | if hours > 12 { PM_BIT } else { 0 } | hours % 12
+                H12_BIT | if hours >= 12 { PM_BIT } else { 0 } | hours % 12
             }
             HourInfo::H24 => hours.dec_to_bsd(),
         };
 
         self.write_reg(Register::Hours, hours)
+    }
+
+    pub fn get_days(&mut self) -> Result<Day, Error> {
+        let days = self.read_reg(Register::Days)?;
+        days.try_into()
+    }
+
+    pub fn set_days(&mut self, days: Day) -> Result<(), Error> {
+        self.write_reg(Register::Days, days.into())
+    }
+
+    pub fn get_date(&mut self) -> Result<u8, Error> {
+        self.read_reg(Register::Days).map(|d| d.bcd_to_dec())
+    }
+
+    pub fn set_date(&mut self, date: u8) -> Result<(), Error> {
+        if (0..31).contains(&date) {
+            self.write_reg(Register::Date, date.dec_to_bsd())
+        } else {
+            Err(Error::DateRange)
+        }
+    }
+
+    pub fn get_month(&mut self) -> Result<u8, Error> {
+        self.read_reg(Register::Month).map(|m| m & MONTH_MASK)
+    }
+
+    pub fn set_month(&mut self, month: u8) -> Result<(), Error> {
+        let century_bit = self.read_reg(Register::Month)? & CENTURY_BIT;
+        if (1..12).contains(&month) {
+            self.write_reg(Register::Month, month | century_bit)
+        } else {
+            Err(Error::MonthRange)
+        }
+    }
+
+    pub fn get_year(&mut self) -> Result<u16, Error> {
+        let century_bit = self.read_reg(Register::Month)? & CENTURY_BIT;
+        self.read_reg(Register::Year)
+            .map(|y| y.bcd_to_dec() as u16 + if century_bit != 0 { 100 } else { 0 } + YEAR_OFFSET)
+    }
+
+    pub fn set_year(&mut self, year: u16) -> Result<(), Error> {
+        if (1900..=2099).contains(&year) {
+            let year = (year - YEAR_OFFSET) as u8;
+            let month_reg = self.read_reg(Register::Month)? & !CENTURY_BIT
+                | if year >= 100 { CENTURY_BIT } else { 0 };
+            self.write_reg(Register::Month, month_reg)?;
+            let year = year % 100;
+
+            self.write_reg(Register::Year, year.dec_to_bsd())
+        } else {
+            Err(Error::YearRange)
+        }
     }
 }
 
@@ -119,6 +220,9 @@ const H12_BIT: u8 = 0x40; // bit 6
 const PM_BIT: u8 = 0x20; // bit 5
 const H12_MASK: u8 = 0x0F; // bits 3-0 in 12 hours mode
 const H24_MASK: u8 = 0x3F; // bits 5-0 in 24 hours mode is BCD
+const CENTURY_BIT: u8 = 0x80; // bit 7
+const MONTH_MASK: u8 = 0x0F;
+const YEAR_OFFSET: u16 = 1900;
 
 fn extract_hour_info(hours: u8) -> HourInfo {
     if hours & H12_BIT != 0 {
@@ -142,6 +246,14 @@ enum HourInfo {
 pub enum Error {
     BusRead,
     BusWrite,
+
+    SecondsRange,
+    MinutesRange,
+    HoursRange,
+    DaysRange,
+    DateRange,
+    MonthRange,
+    YearRange,
 }
 
 #[repr(u8)]
