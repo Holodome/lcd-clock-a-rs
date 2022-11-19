@@ -1,14 +1,18 @@
 //! DS3231 RTC
+//! DS3231 Uses SMBUS which is a modified version of I2C. The only difference,
+//! however, is only payload-connected: each transmission has to include the
+//! command number. Otherwise it uses plain I2C.
 
 use embedded_hal::blocking::i2c::{Write, WriteRead};
 
+/// This address is specified in schematic for product.
 pub const ADDRESS: u16 = 0x68;
 
 #[derive(Debug)]
 pub struct Calendar {
-    year: u8,
-    month: u16,
-    day: u16,
+    year: u16,
+    month: u8,
+    day: u8,
 }
 
 pub struct DS3231<I2C> {
@@ -41,50 +45,97 @@ where
         self.i2c.write(self.addr, &buf).map_err(|_| Error::BusRead)
     }
 
-    pub fn get_year(&mut self) -> Result<u32, Error> {
-        let vai = self.read_reg(Register::Month)?;
-        let year = self.read_reg(Register::Year)?;
-        let bcd = if vai & 0x80 == 0x80 {
-            year as u16 | (0x21 << 8)
-        } else {
-            year as u16 | (0x21 << 8)
+    pub fn get_seconds(&mut self) -> Result<u8, Error> {
+        let secs = self.read_reg(Register::Seconds)?;
+        Ok(secs.bcd_to_dec())
+    }
+
+    pub fn set_seconds(&mut self, secs: u8) -> Result<(), Error> {
+        self.write_reg(Register::Seconds, secs.dec_to_bsd())
+    }
+
+    pub fn get_minutes(&mut self) -> Result<u8, Error> {
+        let mins = self.read_reg(Register::Minutes)?;
+        Ok(mins.bcd_to_dec())
+    }
+
+    pub fn set_minutes(&mut self, mins: u8) -> Result<(), Error> {
+        self.write_reg(Register::Minutes, mins.dec_to_bsd())
+    }
+
+    fn set_hour_info(&mut self, info: HourInfo) -> Result<(), Error> {
+        let hour = self.read_reg(Register::Hours)? & !H12_BIT & !PM_BIT;
+
+        let hour = match info {
+            HourInfo::H12PM => hour | H12_BIT | PM_BIT,
+            HourInfo::H12AM => hour | H12_BIT,
+            HourInfo::H24 => hour,
         };
 
-        Ok(bcd_convert_dec(bcd))
+        self.write_reg(Register::Hours, hour)
     }
 
-    pub fn set_year(&mut self, year: u32) -> Result<(), Error> {
-        self.write_reg(Register::Year, (year & 0xFF) as u8)?;
-        let vai = self.read_reg(Register::Month)?;
-        let new_month = if year >= 2100 { vai | 0x80 } else { vai & 0x7F };
-        self.write_reg(Register::Month, new_month)
+    pub fn get_hours(&mut self) -> Result<u8, Error> {
+        let hours = self.read_reg(Register::Hours)?;
+        let mode = extract_hour_info(hours);
+        let hours = match mode {
+            HourInfo::H12PM => 12 + (hours & H12_MASK),
+            HourInfo::H12AM => hours & H12_MASK,
+            HourInfo::H24 => (hours & H24_MASK).bcd_to_dec(),
+        };
+
+        Ok(hours)
     }
 
-    pub fn get_month(&mut self) -> Result<u8, Error> {
-        let month = self.read_reg(Register::Month)?;
-        let bcd = month & 0x1F;
+    pub fn set_hours(&mut self, hours: u8) -> Result<(), Error> {
+        let mode = extract_hour_info(self.read_reg(Register::Hours)?);
+        let hours = match mode {
+            HourInfo::H12PM | HourInfo::H12AM => {
+                H12_BIT | if hours > 12 { PM_BIT } else { 0 } | hours % 12
+            }
+            HourInfo::H24 => hours.dec_to_bsd(),
+        };
 
-        Ok(bcd_convert_dec(bcd as u16) as u8)
-    }
-
-    pub fn set_month(&mut self, month: u8) -> Result<(), Error> {
-        let vai = self.read_reg(Register::Month)?;
-        self.write_reg(Register::Month, (vai | 0x80) | month)
+        self.write_reg(Register::Hours, hours)
     }
 }
 
-fn bcd_convert_dec(value: u16) -> u32 {
-    ((value & 0xF000) >> 12) as u32 * 1000
-        + ((value & 0x0F00) >> 8) as u32 * 100
-        + ((value & 0x00F0) >> 4) as u32 * 10
-        + (value & 0x0F) as u32
+trait Bcd2Dec<T> {
+    fn bcd_to_dec(self) -> T;
+    fn dec_to_bsd(self) -> T;
 }
 
-fn dec_convert_bcd(value: u32) -> u16 {
-    (((value / 1000) % 10) << 12) as u16
-        | (((value / 100) % 10) << 8) as u16
-        | (((value / 10) % 10) << 4) as u16
-        | (value % 10) as u16
+impl Bcd2Dec<u8> for u8 {
+    fn bcd_to_dec(self) -> u8 {
+        (((self & 0xF0) >> 4) * 10) | (self & 0xF)
+    }
+
+    fn dec_to_bsd(self) -> u8 {
+        ((self / 10) << 4) | (self % 10)
+    }
+}
+
+const H12_BIT: u8 = 0x40; // bit 6
+const PM_BIT: u8 = 0x20; // bit 5
+const H12_MASK: u8 = 0x0F; // bits 3-0 in 12 hours mode
+const H24_MASK: u8 = 0x3F; // bits 5-0 in 24 hours mode is BCD
+
+fn extract_hour_info(hours: u8) -> HourInfo {
+    if hours & H12_BIT != 0 {
+        if hours & PM_BIT != 0 {
+            HourInfo::H12PM
+        } else {
+            HourInfo::H12AM
+        }
+    } else {
+        HourInfo::H24
+    }
+}
+
+enum HourInfo {
+    H24,
+    H12AM,
+    H12PM,
 }
 
 #[derive(Debug, Clone, Copy)]
