@@ -8,6 +8,10 @@ use embedded_hal::blocking::i2c::{Write, WriteRead};
 /// This address is specified in schematic for product.
 pub const ADDRESS: u8 = 0x68;
 
+/// Temperature as acquired from rtc. It consists of 2 parts - 8 bits of degree
+/// celcius and 2 bits of quartes of a degree. Because we have no FPU delay the
+/// construction of float until usage/presentation of temperature and store it
+/// as integer.
 pub struct Temperature(u16);
 
 impl Temperature {
@@ -16,6 +20,7 @@ impl Temperature {
     }
 }
 
+/// Day of week
 #[derive(Debug, Clone, Copy)]
 pub enum Day {
     Sunday = 1,
@@ -58,13 +63,14 @@ pub struct Calendar {
     pub date: u8,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Default)]
 pub struct Time {
     pub hours: u8,
     pub mins: u8,
     pub secs: u8,
 }
 
+/// DS3231 Driver
 pub struct DS3231<I2C> {
     i2c: I2C,
     addr: u8,
@@ -81,6 +87,7 @@ where
     I2C: Write + WriteRead,
 {
     pub fn init(&mut self) -> Result<(), Error> {
+        // Enable tracking of temperature
         let status = self.read_reg(Register::Control)? | TEMP_BIT;
         self.write_reg(Register::Control, status)
     }
@@ -100,12 +107,12 @@ where
         self.i2c.write(self.addr, &buf).map_err(|_| Error::BusRead)
     }
 
-    pub fn get_seconds(&mut self) -> Result<u8, Error> {
+    pub fn get_secs(&mut self) -> Result<u8, Error> {
         let secs = self.read_reg(Register::Seconds)?;
         Ok(secs.bcd_to_dec())
     }
 
-    pub fn set_seconds(&mut self, secs: u8) -> Result<(), Error> {
+    pub fn set_secs(&mut self, secs: u8) -> Result<(), Error> {
         if (0..=59).contains(&secs) {
             self.write_reg(Register::Seconds, secs.dec_to_bsd())
         } else {
@@ -113,12 +120,12 @@ where
         }
     }
 
-    pub fn get_minutes(&mut self) -> Result<u8, Error> {
+    pub fn get_mins(&mut self) -> Result<u8, Error> {
         let mins = self.read_reg(Register::Minutes)?;
         Ok(mins.bcd_to_dec())
     }
 
-    pub fn set_minutes(&mut self, mins: u8) -> Result<(), Error> {
+    pub fn set_mins(&mut self, mins: u8) -> Result<(), Error> {
         if (0..=59).contains(&mins) {
             self.write_reg(Register::Minutes, mins.dec_to_bsd())
         } else {
@@ -235,8 +242,8 @@ where
 
     pub fn get_time(&mut self) -> Result<Time, Error> {
         let hours = self.get_hours()?;
-        let mins = self.get_minutes()?;
-        let secs = self.get_seconds()?;
+        let mins = self.get_mins()?;
+        let secs = self.get_secs()?;
         Ok(Time { hours, mins, secs })
     }
 }
@@ -248,7 +255,7 @@ trait Bcd2Dec<T> {
 
 impl Bcd2Dec<u8> for u8 {
     fn bcd_to_dec(self) -> u8 {
-        (((self & 0xF0) >> 4) * 10) | (self & 0xF)
+        (((self & 0xF0) >> 4) * 10) + (self & 0x0F)
     }
 
     fn dec_to_bsd(self) -> u8 {

@@ -2,6 +2,29 @@ use image::io::Reader as ImageReader;
 use std::{fs::File, io::Write, path::PathBuf};
 use walkdir::WalkDir;
 
+fn convert_rgb8_to_rgb565(src: &Vec<u8>, width: usize, height: usize) -> Vec<u8> {
+    let mut dst = Vec::with_capacity(width * height * 2);
+    for row in 0..height {
+        for col in 0..width {
+            let offset = (row * width + col) * 3;
+            let r = src[offset] as u16;
+            let g = src[offset + 1] as u16;
+            let b = src[offset + 2] as u16;
+
+            let b = (b >> 3) & 0x1f;
+            let g = ((g >> 2) & 0x3F) << 5;
+            let r = ((r >> 3) & 0x1F) << 11;
+
+            let rgb = r | g | b;
+
+            dst.push((rgb >> 8) as u8);
+            dst.push((rgb & 0xFF) as u8);
+        }
+    }
+
+    dst
+}
+
 fn main() {
     let target_dir = PathBuf::from("target/img/");
     let src_dir = "misc/img";
@@ -16,6 +39,8 @@ fn main() {
             let dim = image.dimensions();
 
             let img_raw = image.into_raw();
+            let img_raw = convert_rgb8_to_rgb565(&img_raw, dim.0 as usize, dim.1 as usize);
+
             let dim_raw = [dim.0.to_le_bytes(), dim.1.to_le_bytes()].concat();
 
             let path = path.strip_prefix(src_dir).unwrap();

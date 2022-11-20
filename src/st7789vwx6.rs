@@ -14,7 +14,7 @@
 //! display number set on 3 CS lines into CS for each display independently.
 use core::convert::Infallible;
 use embedded_hal::{
-    blocking::{delay::DelayUs, spi::Write},
+    blocking::spi::Write,
     digital::v2::{OutputPin, PinState},
 };
 use unwrap_infallible::UnwrapInfallible;
@@ -150,9 +150,9 @@ where
         mut y_end: u16,
     ) -> Result<(), Error> {
         x_start += 52;
-        x_end += 52;
+        x_end += 52 - 1;
         y_start += 40;
-        y_end += 40;
+        y_end += 40 - 1;
         self.send_command(Command::CASET)?;
         let mut x = [0u8; 4];
         x[0..2].copy_from_slice(&x_start.to_be_bytes());
@@ -167,13 +167,16 @@ where
         Ok(())
     }
 
-    fn hard_reset<DELAY: DelayUs<u32>>(&mut self, delay: &mut DELAY) {
+    fn hard_reset(&mut self) {
         self.pins.rst().set_high().unwrap_infallible();
-        delay.delay_us(10);
+        // reset for at least 10 us as specified in datasheet.
+        // max rp2040 clock frequency is 133 mhz, so we need to sleep for at least 133 *
+        // 10 cycles.
+        cortex_m::asm::delay(133 * 10);
         self.pins.rst().set_low().unwrap_infallible();
-        delay.delay_us(10);
+        cortex_m::asm::delay(133 * 10);
         self.pins.rst().set_high().unwrap_infallible();
-        delay.delay_us(10);
+        cortex_m::asm::delay(133 * 10);
     }
 
     fn init_display(&mut self) -> Result<(), Error> {
@@ -230,24 +233,14 @@ where
         Ok(())
     }
 
-    pub fn init<DELAY: DelayUs<u32>>(&mut self, delay: &mut DELAY) -> Result<(), Error> {
-        self.hard_reset(delay);
+    pub fn init(&mut self) -> Result<(), Error> {
+        self.hard_reset();
 
         for display in Display::all() {
             self.with_cs(display, Self::init_display)?;
         }
 
         Ok(())
-    }
-
-    pub fn set_pixel(&mut self, display: Display, x: u16, y: u16, color: u16) -> Result<(), Error> {
-        self.with_cs(display, |d| {
-            d.set_region(x, y, x, y)?;
-            d.send_command(Command::RAMWR)?;
-            d.send_data(&color.to_be_bytes())?;
-
-            Ok(())
-        })
     }
 
     pub fn set_pixels(
@@ -268,7 +261,7 @@ where
         })
     }
 
-    pub fn set_pixels_raw_iter<T>(
+    pub fn set_pixels_iter<T>(
         &mut self,
         display: Display,
         x_start: u16,
@@ -307,7 +300,7 @@ where
 
     pub fn clear_all(&mut self, color: u16) -> Result<(), Error> {
         for display in Display::all() {
-            self.set_pixels_raw_iter(
+            self.set_pixels_iter(
                 display,
                 0,
                 0,
