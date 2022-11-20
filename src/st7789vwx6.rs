@@ -12,10 +12,14 @@
 //! Thirdly, there are 3 CS lines - instead of usual for these kind of displays
 //! 1. Waveshare most probably placed a binary decoder circuit that transforms
 //! display number set on 3 CS lines into CS for each display independently.
+//!
+//! Another addition is a pin that controls brightness of displays. We can
+//! attach it to PWM and set brightness dynamically.
 use core::convert::Infallible;
 use embedded_hal::{
     blocking::spi::Write,
     digital::v2::{OutputPin, PinState},
+    PwmPin,
 };
 use unwrap_infallible::UnwrapInfallible;
 
@@ -71,21 +75,25 @@ impl Display {
 }
 
 /// Driver for 6 ST7789VW displays.
-pub struct ST7789VWx6<PINS, SPI> {
+pub struct ST7789VWx6<PINS, SPI, BL> {
     pins: PINS,
     spi: SPI,
+    bl: BL,
 
     width: u16,
     height: u16,
+    brightness: u16,
 }
 
-impl<PINS, SPI> ST7789VWx6<PINS, SPI> {
-    pub fn new(pins: PINS, spi: SPI, width: u16, height: u16) -> Self {
+impl<PINS, SPI, BL> ST7789VWx6<PINS, SPI, BL> {
+    pub fn new(pins: PINS, spi: SPI, bl: BL, width: u16, height: u16, brightness: u16) -> Self {
         Self {
             pins,
             spi,
+            bl,
             width,
             height,
+            brightness,
         }
     }
 
@@ -98,11 +106,17 @@ impl<PINS, SPI> ST7789VWx6<PINS, SPI> {
     }
 }
 
-impl<PINS, SPI> ST7789VWx6<PINS, SPI>
+impl<PINS, SPI, BL> ST7789VWx6<PINS, SPI, BL>
 where
     PINS: Pins,
     SPI: Write<u8>,
+    BL: PwmPin<Duty = u16>,
 {
+    pub fn set_brightness(&mut self, brightness: u16) {
+        self.brightness = brightness;
+        self.bl.set_duty(self.brightness);
+    }
+
     fn cs_low(&mut self, display: Display) {
         let states = display.into_cs_states();
         self.pins.csa1().set_state(states.0).unwrap_infallible();
@@ -119,7 +133,7 @@ where
     fn with_cs<Res>(
         &mut self,
         display: Display,
-        f: impl FnOnce(&mut ST7789VWx6<PINS, SPI>) -> Res,
+        f: impl FnOnce(&mut ST7789VWx6<PINS, SPI, BL>) -> Res,
     ) -> Res {
         self.cs_low(display);
         let result = f(self);
@@ -235,6 +249,7 @@ where
 
     pub fn init(&mut self) -> Result<(), Error> {
         self.hard_reset();
+        self.set_brightness(self.brightness);
 
         for display in Display::all() {
             self.with_cs(display, Self::init_display)?;

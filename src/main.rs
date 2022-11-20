@@ -39,7 +39,6 @@ use st7789vwx6::{Display, ST7789VWx6};
 #[entry]
 fn main() -> ! {
     let mut dp = Peripherals::take().unwrap();
-    // let cp = CorePeripherals::take().unwrap();
 
     let mut wdg = Watchdog::new(dp.WATCHDOG);
     let sio = Sio::new(dp.SIO);
@@ -59,6 +58,7 @@ fn main() -> ! {
     hprintln!("here");
 
     let pins = Pins::new(dp.IO_BANK0, dp.PADS_BANK0, sio.gpio_bank0, &mut dp.RESETS);
+    let mut pwm_slices = hal::pwm::Slices::new(dp.PWM, &mut dp.RESETS);
 
     let mut ds3231 = {
         let sda = pins.gpio6.into_mode::<gpio::FunctionI2C>();
@@ -84,6 +84,14 @@ fn main() -> ! {
         let _clk = pins.gpio9.into_mode::<gpio::FunctionSpi>();
         let _miso = pins.gpio10.into_mode::<gpio::FunctionSpi>();
         let _mosi = pins.gpio11.into_mode::<gpio::FunctionSpi>();
+        let bl = pins.gpio13.into_push_pull_output();
+
+        let mut pwm = pwm_slices.pwm6;
+        pwm.set_ph_correct();
+        pwm.enable();
+
+        let mut channel = pwm.channel_b;
+        channel.output_to(bl);
 
         let spi = Spi::<_, _, 8>::new(dp.SPI1);
         let spi = spi.init(
@@ -96,8 +104,10 @@ fn main() -> ! {
         ST7789VWx6::new(
             (csa1, csa2, csa3, dc, rst),
             spi,
+            channel,
             st7789vwx6::WIDTH,
             st7789vwx6::HEIGHT,
+            u16::MAX / 5,
         )
     };
 
