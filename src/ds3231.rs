@@ -6,7 +6,15 @@
 use embedded_hal::blocking::i2c::{Write, WriteRead};
 
 /// This address is specified in schematic for product.
-pub const ADDRESS: u16 = 0x68;
+pub const ADDRESS: u8 = 0x68;
+
+pub struct Temperature(u16);
+
+impl Temperature {
+    pub fn as_celcius(self) -> f32 {
+        (self.0 >> 2) as f32 + (self.0 & 0x3) as f32 * 0.25
+    }
+}
 
 #[derive(Debug, Clone, Copy)]
 pub enum Day {
@@ -45,9 +53,16 @@ impl From<Day> for u8 {
 
 #[derive(Debug)]
 pub struct Calendar {
-    year: u16,
-    month: u8,
-    day: u8,
+    pub year: u16,
+    pub month: u8,
+    pub date: u8,
+}
+
+#[derive(Debug)]
+pub struct Time {
+    pub hours: u8,
+    pub mins: u8,
+    pub secs: u8,
 }
 
 pub struct DS3231<I2C> {
@@ -65,6 +80,11 @@ impl<I2C> DS3231<I2C>
 where
     I2C: Write + WriteRead,
 {
+    pub fn init(&mut self) -> Result<(), Error> {
+        let status = self.read_reg(Register::Control)? | TEMP_BIT;
+        self.write_reg(Register::Control, status)
+    }
+
     fn read_reg(&mut self, reg: Register) -> Result<u8, Error> {
         let src = [reg as u8];
         let mut dst = [0u8];
@@ -199,6 +219,26 @@ where
             Err(Error::YearRange)
         }
     }
+
+    pub fn get_temperature(&mut self) -> Result<Temperature, Error> {
+        let high = self.read_reg(Register::TemperatureMSB)? as u16;
+        let low = self.read_reg(Register::TemperatureLSB)? as u16;
+        Ok(Temperature(high << 2 | (low >> 6)))
+    }
+
+    pub fn get_calendar(&mut self) -> Result<Calendar, Error> {
+        let year = self.get_year()?;
+        let month = self.get_month()?;
+        let date = self.get_date()?;
+        Ok(Calendar { year, month, date })
+    }
+
+    pub fn get_time(&mut self) -> Result<Time, Error> {
+        let hours = self.get_hours()?;
+        let mins = self.get_minutes()?;
+        let secs = self.get_seconds()?;
+        Ok(Time { hours, mins, secs })
+    }
 }
 
 trait Bcd2Dec<T> {
@@ -223,6 +263,7 @@ const H24_MASK: u8 = 0x3F; // bits 5-0 in 24 hours mode is BCD
 const CENTURY_BIT: u8 = 0x80; // bit 7
 const MONTH_MASK: u8 = 0x0F;
 const YEAR_OFFSET: u16 = 1900;
+const TEMP_BIT: u8 = 0x20;
 
 fn extract_hour_info(hours: u8) -> HourInfo {
     if hours & H12_BIT != 0 {
@@ -265,6 +306,8 @@ enum Register {
     Date = 0x04,
     Month = 0x05,
     Year = 0x06,
+
+    Control = 0x0E,
 
     TemperatureMSB = 0x11,
     TemperatureLSB = 0x12,
