@@ -10,7 +10,7 @@ use panic_semihosting as _;
 #[macro_use]
 extern crate cortex_m_semihosting;
 
-use embedded_hal::spi::MODE_0;
+use embedded_hal::{spi::MODE_0, timer::CountDown};
 use fugit::*;
 use rp_pico::{
     entry,
@@ -19,6 +19,7 @@ use rp_pico::{
         clocks::{init_clocks_and_plls, Clock},
         gpio,
         pac::{CorePeripherals, Peripherals},
+        pio::PIOExt,
         spi::Spi,
         watchdog::Watchdog,
         Sio,
@@ -30,8 +31,8 @@ mod bell;
 mod ds3231;
 mod images;
 mod lcd_clock;
-mod pins;
 mod st7789vwx6;
+mod ws2812;
 
 use ds3231::{Time, DS3231};
 use st7789vwx6::{Display, ST7789VWx6};
@@ -54,8 +55,6 @@ fn main() -> ! {
     )
     .ok()
     .unwrap();
-
-    hprintln!("here");
 
     let pins = Pins::new(dp.IO_BANK0, dp.PADS_BANK0, sio.gpio_bank0, &mut dp.RESETS);
     let mut pwm_slices = hal::pwm::Slices::new(dp.PWM, &mut dp.RESETS);
@@ -114,72 +113,80 @@ fn main() -> ! {
     st7789.init().unwrap();
     st7789.clear_all(0).unwrap();
 
+    let (mut pio, sm0, _, _, _) = dp.PIO0.split(&mut dp.RESETS);
+
+    let mut rgb = pins.gpio22.into_mode();
+    let mut ws2812 = ws2812::WS2812::new(6, rgb, &mut pio, sm0, clocks.peripheral_clock.freq());
+
     hprintln!("loop");
     let mut prev_time = Time::default();
     loop {
         let time = ds3231.get_time().unwrap();
-        if time != prev_time {
-            st7789
-                .set_pixels(
-                    Display::D1,
-                    0,
-                    0,
-                    st7789.width(),
-                    st7789.height(),
-                    images::NUMPIC_A.get_digit(time.hours / 10).unwrap().data(),
-                )
-                .unwrap();
-            st7789
-                .set_pixels(
-                    Display::D2,
-                    0,
-                    0,
-                    st7789.width(),
-                    st7789.height(),
-                    images::NUMPIC_A.get_digit(time.hours % 10).unwrap().data(),
-                )
-                .unwrap();
-            st7789
-                .set_pixels(
-                    Display::D3,
-                    0,
-                    0,
-                    st7789.width(),
-                    st7789.height(),
-                    images::NUMPIC_A.get_digit(time.mins / 10).unwrap().data(),
-                )
-                .unwrap();
-            st7789
-                .set_pixels(
-                    Display::D4,
-                    0,
-                    0,
-                    st7789.width(),
-                    st7789.height(),
-                    images::NUMPIC_A.get_digit(time.mins % 10).unwrap().data(),
-                )
-                .unwrap();
-            st7789
-                .set_pixels(
-                    Display::D5,
-                    0,
-                    0,
-                    st7789.width(),
-                    st7789.height(),
-                    images::NUMPIC_A.get_digit(time.secs / 10).unwrap().data(),
-                )
-                .unwrap();
-            st7789
-                .set_pixels(
-                    Display::D6,
-                    0,
-                    0,
-                    st7789.width(),
-                    st7789.height(),
-                    images::NUMPIC_A.get_digit(time.secs % 10).unwrap().data(),
-                )
-                .unwrap();
-        }
+
+        ws2812.display(255, 0, 255);
+        cortex_m::asm::delay(125 * 1000 * 50);
+        // if time != prev_time {
+        //     st7789
+        //         .set_pixels(
+        //             Display::D1,
+        //             0,
+        //             0,
+        //             st7789.width(),
+        //             st7789.height(),
+        //             images::NUMPIC_A.get_digit(time.hours /
+        // 10).unwrap().data(),         )
+        //         .unwrap();
+        //     st7789
+        //         .set_pixels(
+        //             Display::D2,
+        //             0,
+        //             0,
+        //             st7789.width(),
+        //             st7789.height(),
+        //             images::NUMPIC_A.get_digit(time.hours %
+        // 10).unwrap().data(),         )
+        //         .unwrap();
+        //     st7789
+        //         .set_pixels(
+        //             Display::D3,
+        //             0,
+        //             0,
+        //             st7789.width(),
+        //             st7789.height(),
+        //             images::NUMPIC_A.get_digit(time.mins /
+        // 10).unwrap().data(),         )
+        //         .unwrap();
+        //     st7789
+        //         .set_pixels(
+        //             Display::D4,
+        //             0,
+        //             0,
+        //             st7789.width(),
+        //             st7789.height(),
+        //             images::NUMPIC_A.get_digit(time.mins %
+        // 10).unwrap().data(),         )
+        //         .unwrap();
+        //     st7789
+        //         .set_pixels(
+        //             Display::D5,
+        //             0,
+        //             0,
+        //             st7789.width(),
+        //             st7789.height(),
+        //             images::NUMPIC_A.get_digit(time.secs /
+        // 10).unwrap().data(),         )
+        //         .unwrap();
+        //     st7789
+        //         .set_pixels(
+        //             Display::D6,
+        //             0,
+        //             0,
+        //             st7789.width(),
+        //             st7789.height(),
+        //             images::NUMPIC_A.get_digit(time.secs %
+        // 10).unwrap().data(),         )
+        //         .unwrap();
+        // }
 
         // hprintln!("here");
         //

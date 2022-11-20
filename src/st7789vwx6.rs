@@ -186,11 +186,11 @@ where
         // reset for at least 10 us as specified in datasheet.
         // max rp2040 clock frequency is 133 mhz, so we need to sleep for at least 133 *
         // 10 cycles.
-        cortex_m::asm::delay(133 * 10);
+        cortex_m::asm::delay(125 * 10);
         self.pins.rst().set_low().unwrap_infallible();
-        cortex_m::asm::delay(133 * 10);
+        cortex_m::asm::delay(125 * 10);
         self.pins.rst().set_high().unwrap_infallible();
-        cortex_m::asm::delay(133 * 10);
+        cortex_m::asm::delay(125 * 10);
     }
 
     fn init_display(&mut self) -> Result<(), Error> {
