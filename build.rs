@@ -11,9 +11,9 @@ fn convert_rgb8_to_rgb565(src: &Vec<u8>, width: usize, height: usize) -> Vec<u8>
             let g = src[offset + 1] as u16;
             let b = src[offset + 2] as u16;
 
-            let b = (b >> 3) & 0x1f;
-            let g = ((g >> 2) & 0x3F) << 5;
-            let r = ((r >> 3) & 0x1F) << 11;
+            let b = b >> 3;
+            let g = (g >> 2) << 5;
+            let r = (r >> 3) << 11;
 
             let rgb = r | g | b;
 

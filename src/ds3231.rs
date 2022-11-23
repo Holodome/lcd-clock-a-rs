@@ -104,7 +104,7 @@ where
 
     fn write_reg(&mut self, reg: Register, value: u8) -> Result<(), Error> {
         let buf = [reg as u8, value];
-        self.i2c.write(self.addr, &buf).map_err(|_| Error::BusRead)
+        self.i2c.write(self.addr, &buf).map_err(|_| Error::BusWrite)
     }
 
     pub fn get_secs(&mut self) -> Result<u8, Error> {
@@ -304,7 +304,6 @@ pub enum Error {
     YearRange,
 }
 
-#[repr(u8)]
 enum Register {
     Seconds = 0x00,
     Minutes = 0x01,

@@ -28,6 +28,7 @@ use rp_pico::{
 };
 
 mod bell;
+mod bme280;
 mod ds3231;
 mod images;
 mod lcd_clock;
@@ -36,6 +37,8 @@ mod ws2812;
 
 use ds3231::{Time, DS3231};
 use st7789vwx6::{Display, ST7789VWx6};
+
+use crate::bme280::BME280;
 
 #[entry]
 fn main() -> ! {
@@ -116,7 +119,25 @@ fn main() -> ! {
     let (mut pio, sm0, _, _, _) = dp.PIO0.split(&mut dp.RESETS);
 
     let mut rgb = pins.gpio22.into_mode();
-    let mut ws2812 = ws2812::WS2812::new(6, rgb, &mut pio, sm0, clocks.peripheral_clock.freq());
+    let mut ws2812 =
+        ws2812::WS2812::new(6, rgb, &mut pio, sm0, clocks.peripheral_clock.freq()).unwrap();
+
+    let sda = pins.gpio20.into_mode::<gpio::FunctionI2C>();
+    let scl = pins.gpio21.into_mode::<gpio::FunctionI2C>();
+    let i2c = hal::I2C::i2c0(
+        dp.I2C0,
+        sda,
+        scl,
+        1u32.MHz(),
+        &mut dp.RESETS,
+        &clocks.peripheral_clock,
+    );
+    let mut bme280 = BME280::new(i2c, bme280::ADDRESS);
+    cortex_m::asm::bkpt();
+    bme280.init().unwrap();
+
+    let vals = bme280.read_params().unwrap();
+    hprintln!("params: {:?}", vals);
 
     hprintln!("loop");
     let mut prev_time = Time::default();
