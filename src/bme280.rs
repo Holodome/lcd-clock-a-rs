@@ -94,32 +94,45 @@ where
         self.i2c.write(self.addr, &buf).map_err(|_| Error::BusWrite)
     }
 
-    fn read_regs<const N: usize>(
-        &mut self,
-        regs: &[Register; N],
-        dst: &mut [u8; N],
-    ) -> Result<(), Error> {
-        self.i2c
-            .write_read(
-                self.addr,
-                // SAFETY: Safe because Register has repr(u8)
-                unsafe { core::mem::transmute::<_, &[u8; N]>(regs) },
-                dst,
-            )
-            .map_err(|_| Error::BusRead)
+    fn read_regs(&mut self, regs: &[Register], dst: &mut [u8]) -> Result<(), Error> {
+        for (i, &reg) in regs.iter().enumerate() {
+            self.i2c
+                .write_read(self.addr, &[reg as u8], &mut dst[i..i + 1])
+                .map_err(|_| Error::BusRead)?;
+        }
+
+        Ok(())
+        // TODO: Why this does not work?
+        // self.i2c
+        //     .write_read(
+        //         self.addr,
+        //         // SAFETY: Safe because Register has repr(u8)
+        //         unsafe { core::mem::transmute(regs) },
+        //         dst,
+        //     )
+        //     .map_err(|_| Error::BusRead)
     }
 
     pub fn init(&mut self) -> Result<(), Error> {
+        let mut chip_id = [0u8];
+        self.read_regs(&[Register::ChipId], &mut chip_id)?;
+        if chip_id[0] != 0x60 {
+            return Err(Error::WrongChipId);
+        }
+
         self.set_settings()?;
         self.calibrate()
     }
 
     fn set_settings(&mut self) -> Result<(), Error> {
+        const HUMIDITY_OVERSAMPLING: u8 = 1;
+        self.write_reg(Register::CtrlHum, HUMIDITY_OVERSAMPLING)?;
+
         const TEMP_OVERSAMPLING: u8 = 1;
         const PRESSURE_OVERSAMPLING: u8 = 1;
-        const SENSOR_MODE: u8 = 3;
+        const SENSOR_MODE: u8 = 3; // normal mode
         self.write_reg(
-            Register::CtrlHum,
+            Register::CtrlMeas,
             (TEMP_OVERSAMPLING << 5) | (PRESSURE_OVERSAMPLING << 2) | SENSOR_MODE,
         )?;
 
@@ -127,12 +140,9 @@ where
         const FILTER: u8 = 0; // off
         const SPI_ENABLE: u8 = 0; // disable
         self.write_reg(
-            Register::CtrlMeas,
+            Register::Config,
             (STANDBY << 5) | (FILTER << 2) | SPI_ENABLE,
         )?;
-
-        const HUMIDITY_OVERSAMPLING: u8 = 1;
-        self.write_reg(Register::Config, HUMIDITY_OVERSAMPLING)?;
 
         Ok(())
     }
@@ -166,8 +176,6 @@ where
         self.read_regs(&h_regs, &mut h_bytes)?;
 
         let compensator = ADCCompensator {
-            t_fine: Default::default(),
-
             digt1: u16::from_le_bytes(t_bytes[0..2].try_into().unwrap()),
             digt2: i16::from_le_bytes(t_bytes[2..4].try_into().unwrap()),
             digt3: i16::from_le_bytes(t_bytes[4..6].try_into().unwrap()),
@@ -200,8 +208,8 @@ where
             PressMSB, PressLSB, PressXLSB, TempMSB, TempLSB, TempXLSB, HumMSB, HumLSB,
         ];
         let mut bytes = [0u8; 8];
-
         self.read_regs(&regs, &mut bytes)?;
+
         let Some(compensator) = self.compensator.borrow_mut() else {
             return Err(Error::NotInitialized);
         };
@@ -219,12 +227,8 @@ where
     }
 }
 
-/// This unholy structure is a product of datasheet adc compensator code sample.
-/// It consists of 3 functions transforming values of temperature, pressure and
-/// humidity. BUT it features a global variable, making it harder to decouple.
-#[derive(Default)]
+#[derive(Default, Debug)]
 struct ADCCompensator {
-    t_fine: i32,
     // Temperature compensation
     digt1: u16,
     digt2: i16,
@@ -250,29 +254,29 @@ struct ADCCompensator {
 
 impl ADCCompensator {
     fn compensate_tph(&mut self, t: i32, p: i32, h: i32) -> (i32, u32, u32) {
-        let t = self.compensate_t(t);
-        let p = self.compensate_p(p);
-        let h = self.compensate_h(h);
+        let (t, t_fine) = self.compensate_t(t);
+        let p = self.compensate_p(p, t_fine);
+        let h = self.compensate_h(h, t_fine);
         (t, p, h)
     }
 
-    fn compensate_t(&mut self, adc_t: i32) -> i32 {
-        let a = ((adc_t >> 3) - ((self.digt1 as i32) << 1)) * (self.digt2 as i32) >> 11;
-        let b = ((((adc_t >> 4) - self.digt1 as i32) * ((adc_t >> 4) - self.digt1 as i32)) >> 12)
-            * (self.digt3 as i32)
-            >> 14;
+    fn compensate_t(&mut self, adc_t: i32) -> (i32, i32) {
+        let var1 = (((adc_t >> 3) - ((self.digt1 as i32) << 1)) * (self.digt2 as i32)) >> 11;
+        let var2 =
+            (((((adc_t >> 4) - (self.digt1 as i32)) * ((adc_t >> 4) - (self.digt1 as i32))) >> 12)
+                * (self.digt3 as i32))
+                >> 14;
 
-        self.t_fine = a + b;
-
-        (self.t_fine * 5 + 128) >> 8
+        let t_fine = var1 + var2;
+        ((t_fine * 5 + 128) >> 8, t_fine)
     }
 
-    fn compensate_p(&self, adc_p: i32) -> u32 {
-        let a = self.t_fine as i64 - 128000;
+    fn compensate_p(&self, adc_p: i32, t_fine: i32) -> u32 {
+        let a = t_fine as i64 - 128000;
         let b = a * a * self.digp6 as i64;
         let b = b + ((a * self.digp5 as i64) << 17);
         let b = b + ((self.digp4 as i64) << 35);
-        let a = ((a * a * (self.digp3 as i64)) >> 8) + ((a * (self.digt2 as i64)) << 12);
+        let a = ((a * a * (self.digp3 as i64)) >> 8) + ((a * (self.digp2 as i64)) << 12);
         let a = ((1 << 47) + a) * (self.digp1 as i64) >> 33;
         if a == 0 {
             return 0;
@@ -287,8 +291,8 @@ impl ADCCompensator {
         p as u32
     }
 
-    fn compensate_h(&self, adc_h: i32) -> u32 {
-        let v_x1_u32r = self.t_fine - 76800;
+    fn compensate_h(&self, adc_h: i32, t_fine: i32) -> u32 {
+        let v_x1_u32r = t_fine - 76800;
         let v_x1_u32r =
             ((((adc_h << 14) - ((self.digh4 as i32) << 20) - ((self.digh5 as i32) * v_x1_u32r))
                 + (16384))
@@ -313,6 +317,7 @@ impl ADCCompensator {
 }
 
 #[repr(u8)]
+#[derive(Clone, Copy, Debug)]
 enum Register {
     DigT1LSB = 0x88,
     DigT1MSB = 0x89,
@@ -361,6 +366,8 @@ enum Register {
     CtrlHum = 0xF2,
     CtrlMeas = 0xF4,
     Config = 0xF5,
+
+    ChipId = 0xD0,
 }
 
 #[derive(Debug)]
@@ -368,4 +375,5 @@ pub enum Error {
     BusRead,
     BusWrite,
     NotInitialized,
+    WrongChipId,
 }

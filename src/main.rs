@@ -62,20 +62,20 @@ fn main() -> ! {
     let pins = Pins::new(dp.IO_BANK0, dp.PADS_BANK0, sio.gpio_bank0, &mut dp.RESETS);
     let mut pwm_slices = hal::pwm::Slices::new(dp.PWM, &mut dp.RESETS);
 
-    let mut ds3231 = {
-        let sda = pins.gpio6.into_mode::<gpio::FunctionI2C>();
-        let scl = pins.gpio7.into_mode::<gpio::FunctionI2C>();
-        let i2c = hal::I2C::i2c1(
-            dp.I2C1,
-            sda,
-            scl,
-            100u32.kHz(),
-            &mut dp.RESETS,
-            &clocks.peripheral_clock,
-        );
-        DS3231::new(i2c, ds3231::ADDRESS)
-    };
-    ds3231.init().unwrap();
+    // let mut ds3231 = {
+    //     let sda = pins.gpio6.into_mode::<gpio::FunctionI2C>();
+    //     let scl = pins.gpio7.into_mode::<gpio::FunctionI2C>();
+    //     let i2c = hal::I2C::i2c1(
+    //         dp.I2C1,
+    //         sda,
+    //         scl,
+    //         100u32.kHz(),
+    //         &mut dp.RESETS,
+    //         &clocks.peripheral_clock,
+    //     );
+    //     DS3231::new(i2c, ds3231::ADDRESS)
+    // };
+    // ds3231.init().unwrap();
 
     let mut st7789 = {
         let csa1 = pins.gpio2.into_push_pull_output();
@@ -122,18 +122,27 @@ fn main() -> ! {
     let mut ws2812 =
         ws2812::WS2812::new(6, rgb, &mut pio, sm0, clocks.peripheral_clock.freq()).unwrap();
 
-    let sda = pins.gpio20.into_mode::<gpio::FunctionI2C>();
-    let scl = pins.gpio21.into_mode::<gpio::FunctionI2C>();
-    let i2c = hal::I2C::i2c0(
-        dp.I2C0,
+    // let sda = pins.gpio20.into_mode::<gpio::FunctionI2C>();
+    // let scl = pins.gpio21.into_mode::<gpio::FunctionI2C>();
+    // let i2c = hal::I2C::i2c0(
+    //     dp.I2C0,
+    //     sda,
+    //     scl,
+    //     1u32.MHz(),
+    //     &mut dp.RESETS,
+    //     &clocks.peripheral_clock,
+    // );
+    let sda = pins.gpio6.into_mode::<gpio::FunctionI2C>();
+    let scl = pins.gpio7.into_mode::<gpio::FunctionI2C>();
+    let i2c = hal::I2C::i2c1(
+        dp.I2C1,
         sda,
         scl,
-        1u32.MHz(),
+        100u32.kHz(),
         &mut dp.RESETS,
         &clocks.peripheral_clock,
     );
     let mut bme280 = BME280::new(i2c, bme280::ADDRESS);
-    cortex_m::asm::bkpt();
     bme280.init().unwrap();
 
     let vals = bme280.read_params().unwrap();
@@ -142,7 +151,7 @@ fn main() -> ! {
     hprintln!("loop");
     let mut prev_time = Time::default();
     loop {
-        let time = ds3231.get_time().unwrap();
+        // let time = ds3231.get_time().unwrap();
 
         ws2812.display(255, 0, 255);
         cortex_m::asm::delay(125 * 1000 * 50);
