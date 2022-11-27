@@ -125,7 +125,7 @@ where
     }
 
     fn set_settings(&mut self) -> Result<(), Error> {
-        const HUMIDITY_OVERSAMPLING: u8 = 1;
+        const HUMIDITY_OVERSAMPLING: u8 = 7;
         self.write_reg(Register::CtrlHum, HUMIDITY_OVERSAMPLING)?;
 
         const TEMP_OVERSAMPLING: u8 = 1;
@@ -194,7 +194,7 @@ where
             digh2: i16::from_le_bytes(h_bytes[1..3].try_into().unwrap()),
             digh3: h_bytes[3],
             digh4: ((h_bytes[4] as i16) << 4) | (h_bytes[5] & 0x0F) as i16,
-            digh5: ((h_bytes[6] as i16) << 4) | ((h_bytes[5] >> 4) as i16),
+            digh5: ((h_bytes[6] as i16) << 4) | (((h_bytes[5] >> 4) & 0x0F) as i16),
             digh6: h_bytes[7] as i8,
         };
         self.compensator.replace(compensator);
@@ -217,6 +217,8 @@ where
         let p = ((bytes[0] as i32) << 12) | ((bytes[1] as i32) << 4) | ((bytes[2] as i32) >> 4);
         let t = ((bytes[3] as i32) << 12) | ((bytes[4] as i32) << 4) | ((bytes[5] as i32) >> 4);
         let h = ((bytes[6] as i32) << 8) | (bytes[7] as i32);
+        // TODO: humidity returns bogus values, the error is most likely in
+        // calibration/reading adc value
 
         let (t, p, h) = compensator.compensate_tph(t, p, h);
         Ok((
@@ -295,17 +297,18 @@ impl ADCCompensator {
         let v_x1_u32r = t_fine - 76800;
         let v_x1_u32r =
             ((((adc_h << 14) - ((self.digh4 as i32) << 20) - ((self.digh5 as i32) * v_x1_u32r))
-                + (16384))
+                + 16384)
                 >> 15)
                 * (((((((v_x1_u32r * (self.digh6 as i32)) >> 10)
-                    * (((v_x1_u32r * (self.digh3 as i32)) >> 11) + (32768)))
+                    * (((v_x1_u32r * (self.digh3 as i32)) >> 11) + 32768))
                     >> 10)
-                    + (2097152))
+                    + 2097152)
                     * (self.digh2 as i32)
                     + 8192)
                     >> 14);
-        let v_x1_u32r = v_x1_u32r
-            - (((((v_x1_u32r >> 15) * (v_x1_u32r >> 15)) >> 7) * (self.digh1 as i32)) >> 4);
+
+        let v_x1_u32r =
+            v_x1_u32r - ((((v_x1_u32r >> 15) * (v_x1_u32r >> 15)) >> 7) * (self.digh1 as i32)) >> 4;
         let v_x1_u32r = if v_x1_u32r < 0 { 0 } else { v_x1_u32r };
         let v_x1_u32r = if v_x1_u32r > 419430400 {
             419430400
@@ -345,7 +348,6 @@ enum Register {
     DigP9MSB = 0x9F,
 
     DigH1 = 0xA1,
-
     DigH2MSB = 0xE1,
     DigH2LSB = 0xE2,
     DigH3 = 0xE3,
