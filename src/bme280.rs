@@ -2,9 +2,6 @@ use core::borrow::BorrowMut;
 
 use embedded_hal::blocking::i2c::{Write, WriteRead};
 
-/// This address is specified in schematic for product.
-pub const ADDRESS: u8 = 0x76;
-
 #[derive(Clone, Copy)]
 pub struct Temperature(i32);
 
@@ -68,20 +65,32 @@ impl core::fmt::Debug for Humidity {
     }
 }
 
-pub struct BME280<I2C> {
-    i2c: I2C,
+pub struct BME280State {
     addr: u8,
-
     compensator: Option<ADCCompensator>,
 }
 
-impl<I2C> BME280<I2C> {
-    pub fn new(i2c: I2C, addr: u8) -> Self {
+impl BME280State {
+    pub fn new(addr: u8) -> Self {
         Self {
-            i2c,
             addr,
             compensator: None,
         }
+    }
+}
+
+pub struct BME280<I2C> {
+    i2c: I2C,
+    state: BME280State,
+}
+
+impl<I2C> BME280<I2C> {
+    pub fn new(i2c: I2C, state: BME280State) -> Self {
+        Self { i2c, state }
+    }
+
+    pub fn release(self) -> (I2C, BME280State) {
+        (self.i2c, self.state)
     }
 }
 
@@ -91,13 +100,15 @@ where
 {
     fn write_reg(&mut self, reg: Register, value: u8) -> Result<(), Error> {
         let buf = [reg as u8, value];
-        self.i2c.write(self.addr, &buf).map_err(|_| Error::BusWrite)
+        self.i2c
+            .write(self.state.addr, &buf)
+            .map_err(|_| Error::BusWrite)
     }
 
     fn read_regs(&mut self, regs: &[Register], dst: &mut [u8]) -> Result<(), Error> {
         for (i, &reg) in regs.iter().enumerate() {
             self.i2c
-                .write_read(self.addr, &[reg as u8], &mut dst[i..i + 1])
+                .write_read(self.state.addr, &[reg as u8], &mut dst[i..i + 1])
                 .map_err(|_| Error::BusRead)?;
         }
 
@@ -197,7 +208,7 @@ where
             digh5: ((h_bytes[6] as i16) << 4) | (((h_bytes[5] >> 4) & 0x0F) as i16),
             digh6: h_bytes[7] as i8,
         };
-        self.compensator.replace(compensator);
+        self.state.compensator.replace(compensator);
 
         Ok(())
     }
@@ -210,7 +221,7 @@ where
         let mut bytes = [0u8; 8];
         self.read_regs(&regs, &mut bytes)?;
 
-        let Some(compensator) = self.compensator.borrow_mut() else {
+        let Some(compensator) = self.state.compensator.borrow_mut() else {
             return Err(Error::NotInitialized);
         };
 

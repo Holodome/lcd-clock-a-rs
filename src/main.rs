@@ -1,6 +1,7 @@
 #![no_std]
 #![no_main]
 
+use lcd_clock::LcdClock;
 #[cfg(not(feature = "semihosting"))]
 use panic_halt as _;
 #[cfg(feature = "semihosting")]
@@ -35,10 +36,13 @@ mod lcd_clock;
 mod st7789vwx6;
 mod ws2812;
 
-use ds3231::{Time, DS3231};
-use st7789vwx6::{Display, ST7789VWx6};
-
-use crate::bme280::BME280;
+use crate::{
+    bme280::{BME280State, BME280},
+    ds3231::{DS3231State, Time, DS3231},
+    lcd_clock::{BME280_I2C_ADDR, DS3231_I2C_ADDR},
+    st7789vwx6::{Display, ST7789VWx6},
+    ws2812::WS2812,
+};
 
 #[entry]
 fn main() -> ! {
@@ -62,22 +66,23 @@ fn main() -> ! {
     let pins = Pins::new(dp.IO_BANK0, dp.PADS_BANK0, sio.gpio_bank0, &mut dp.RESETS);
     let mut pwm_slices = hal::pwm::Slices::new(dp.PWM, &mut dp.RESETS);
 
-    // let mut ds3231 = {
-    //     let sda = pins.gpio6.into_mode::<gpio::FunctionI2C>();
-    //     let scl = pins.gpio7.into_mode::<gpio::FunctionI2C>();
-    //     let i2c = hal::I2C::i2c1(
-    //         dp.I2C1,
-    //         sda,
-    //         scl,
-    //         100u32.kHz(),
-    //         &mut dp.RESETS,
-    //         &clocks.peripheral_clock,
-    //     );
-    //     DS3231::new(i2c, ds3231::ADDRESS)
-    // };
-    // ds3231.init().unwrap();
+    let i2c_bus = {
+        let sda = pins.gpio6.into_mode::<gpio::FunctionI2C>();
+        let scl = pins.gpio7.into_mode::<gpio::FunctionI2C>();
+        hal::I2C::i2c1(
+            dp.I2C1,
+            sda,
+            scl,
+            100u32.kHz(),
+            &mut dp.RESETS,
+            &clocks.peripheral_clock,
+        )
+    };
 
-    let mut st7789 = {
+    let ds3231_state = DS3231State::new(DS3231_I2C_ADDR);
+    let bme280_state = BME280State::new(BME280_I2C_ADDR);
+
+    let mut st7789vw = {
         let csa1 = pins.gpio2.into_push_pull_output();
         let csa2 = pins.gpio3.into_push_pull_output();
         let csa3 = pins.gpio4.into_push_pull_output();
@@ -113,48 +118,30 @@ fn main() -> ! {
         )
     };
 
-    st7789.init().unwrap();
-    st7789.clear_all(0).unwrap();
+    let mut ws2812 = {
+        let (mut pio, sm0, _, _, _) = dp.PIO0.split(&mut dp.RESETS);
+        let mut rgb = pins.gpio22.into_mode();
+        WS2812::new(6, rgb, &mut pio, sm0, clocks.peripheral_clock.freq()).unwrap()
+    };
 
-    let (mut pio, sm0, _, _, _) = dp.PIO0.split(&mut dp.RESETS);
+    st7789vw.init().unwrap();
+    st7789vw.clear_all(0).unwrap();
 
-    let mut rgb = pins.gpio22.into_mode();
-    let mut ws2812 =
-        ws2812::WS2812::new(6, rgb, &mut pio, sm0, clocks.peripheral_clock.freq()).unwrap();
+    let (i2c_bus, bme280_state) = {
+        let mut bme280 = BME280::new(i2c_bus, bme280_state);
+        bme280.init().unwrap();
+        bme280.release()
+    };
+    let (i2c_bus, ds3231_state) = {
+        let mut ds3231 = DS3231::new(i2c_bus, ds3231_state);
+        ds3231.init().unwrap();
+        ds3231.release()
+    };
 
-    // let sda = pins.gpio20.into_mode::<gpio::FunctionI2C>();
-    // let scl = pins.gpio21.into_mode::<gpio::FunctionI2C>();
-    // let i2c = hal::I2C::i2c0(
-    //     dp.I2C0,
-    //     sda,
-    //     scl,
-    //     1u32.MHz(),
-    //     &mut dp.RESETS,
-    //     &clocks.peripheral_clock,
-    // );
-    let sda = pins.gpio6.into_mode::<gpio::FunctionI2C>();
-    let scl = pins.gpio7.into_mode::<gpio::FunctionI2C>();
-    let i2c = hal::I2C::i2c1(
-        dp.I2C1,
-        sda,
-        scl,
-        100u32.kHz(),
-        &mut dp.RESETS,
-        &clocks.peripheral_clock,
-    );
-    let mut bme280 = BME280::new(i2c, bme280::ADDRESS);
-    bme280.init().unwrap();
+    let lcd_clock = LcdClock::new(i2c_bus, ds3231_state, bme280_state, st7789vw);
 
-    let vals = bme280.read_params().unwrap();
-    hprintln!("params: {:?}", vals);
-
-    hprintln!("loop");
-    let mut prev_time = Time::default();
     loop {
-        // let time = ds3231.get_time().unwrap();
-
         ws2812.display(255, 0, 255);
-        cortex_m::asm::delay(125 * 1000 * 50);
         // if time != prev_time {
         //     st7789
         //         .set_pixels(

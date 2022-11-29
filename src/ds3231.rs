@@ -5,9 +5,6 @@
 
 use embedded_hal::blocking::i2c::{Write, WriteRead};
 
-/// This address is specified in schematic for product.
-pub const ADDRESS: u8 = 0x68;
-
 /// Temperature as acquired from rtc. It consists of 2 parts - 8 bits of degree
 /// celcius and 2 bits of quartes of a degree. Because we have no FPU delay the
 /// construction of float until usage/presentation of temperature and store it
@@ -70,15 +67,29 @@ pub struct Time {
     pub secs: u8,
 }
 
-/// DS3231 Driver
-pub struct DS3231<I2C> {
-    i2c: I2C,
+pub struct DS3231State {
     addr: u8,
 }
 
+impl DS3231State {
+    pub fn new(addr: u8) -> Self {
+        Self { addr }
+    }
+}
+
+/// DS3231 Driver
+pub struct DS3231<I2C> {
+    i2c: I2C,
+    state: DS3231State,
+}
+
 impl<I2C> DS3231<I2C> {
-    pub fn new(i2c: I2C, addr: u8) -> Self {
-        Self { i2c, addr }
+    pub fn new(i2c: I2C, state: DS3231State) -> Self {
+        Self { i2c, state }
+    }
+
+    pub fn release(self) -> (I2C, DS3231State) {
+        (self.i2c, self.state)
     }
 }
 
@@ -96,7 +107,7 @@ where
         let src = [reg as u8];
         let mut dst = [0u8];
         self.i2c
-            .write_read(self.addr, &src, &mut dst)
+            .write_read(self.state.addr, &src, &mut dst)
             .map_err(|_| Error::BusRead)?;
 
         Ok(dst[0])
@@ -104,7 +115,9 @@ where
 
     fn write_reg(&mut self, reg: Register, value: u8) -> Result<(), Error> {
         let buf = [reg as u8, value];
-        self.i2c.write(self.addr, &buf).map_err(|_| Error::BusWrite)
+        self.i2c
+            .write(self.state.addr, &buf)
+            .map_err(|_| Error::BusWrite)
     }
 
     pub fn get_secs(&mut self) -> Result<u8, Error> {
