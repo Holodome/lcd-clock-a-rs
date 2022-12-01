@@ -11,7 +11,7 @@ use panic_semihosting as _;
 #[macro_use]
 extern crate cortex_m_semihosting;
 
-use embedded_hal::{spi::MODE_0, timer::CountDown};
+use embedded_hal::spi::MODE_0;
 use fugit::*;
 use rp_pico::{
     entry,
@@ -19,7 +19,7 @@ use rp_pico::{
         self,
         clocks::{init_clocks_and_plls, Clock},
         gpio,
-        pac::{CorePeripherals, Peripherals},
+        pac::Peripherals,
         pio::PIOExt,
         spi::Spi,
         watchdog::Watchdog,
@@ -29,18 +29,12 @@ use rp_pico::{
 };
 
 mod bell;
-mod bme280;
-mod ds3231;
+mod drivers;
 mod images;
 mod lcd_clock;
-mod st7789vwx6;
-mod ws2812;
 
-use crate::{
-    bme280::{BME280State, BME280},
-    ds3231::{DS3231State, Time, DS3231},
-    lcd_clock::{BME280_I2C_ADDR, DS3231_I2C_ADDR},
-    st7789vwx6::{Display, ST7789VWx6},
+use crate::drivers::{
+    st7789vwx6::{self, ST7789VWx6},
     ws2812::WS2812,
 };
 
@@ -79,10 +73,7 @@ fn main() -> ! {
         )
     };
 
-    let ds3231_state = DS3231State::new(DS3231_I2C_ADDR);
-    let bme280_state = BME280State::new(BME280_I2C_ADDR);
-
-    let mut st7789vw = {
+    let st7789vw = {
         let csa1 = pins.gpio2.into_push_pull_output();
         let csa2 = pins.gpio3.into_push_pull_output();
         let csa3 = pins.gpio4.into_push_pull_output();
@@ -118,94 +109,16 @@ fn main() -> ! {
         )
     };
 
-    let mut ws2812 = {
+    let ws2812 = {
         let (mut pio, sm0, _, _, _) = dp.PIO0.split(&mut dp.RESETS);
-        let mut rgb = pins.gpio22.into_mode();
+        let rgb = pins.gpio22.into_mode();
         WS2812::new(6, rgb, &mut pio, sm0, clocks.peripheral_clock.freq()).unwrap()
     };
 
-    st7789vw.init().unwrap();
-    st7789vw.clear_all(0).unwrap();
-
-    let (i2c_bus, bme280_state) = {
-        let mut bme280 = BME280::new(i2c_bus, bme280_state);
-        bme280.init().unwrap();
-        bme280.release()
-    };
-    let (i2c_bus, ds3231_state) = {
-        let mut ds3231 = DS3231::new(i2c_bus, ds3231_state);
-        ds3231.init().unwrap();
-        ds3231.release()
-    };
-
-    let lcd_clock = LcdClock::new(i2c_bus, ds3231_state, bme280_state, st7789vw);
+    let mut lcd_clock = LcdClock::new(i2c_bus, st7789vw, ws2812);
+    lcd_clock.init().unwrap();
 
     loop {
-        ws2812.display(255, 0, 255);
-        // if time != prev_time {
-        //     st7789
-        //         .set_pixels(
-        //             Display::D1,
-        //             0,
-        //             0,
-        //             st7789.width(),
-        //             st7789.height(),
-        //             images::NUMPIC_A.get_digit(time.hours /
-        // 10).unwrap().data(),         )
-        //         .unwrap();
-        //     st7789
-        //         .set_pixels(
-        //             Display::D2,
-        //             0,
-        //             0,
-        //             st7789.width(),
-        //             st7789.height(),
-        //             images::NUMPIC_A.get_digit(time.hours %
-        // 10).unwrap().data(),         )
-        //         .unwrap();
-        //     st7789
-        //         .set_pixels(
-        //             Display::D3,
-        //             0,
-        //             0,
-        //             st7789.width(),
-        //             st7789.height(),
-        //             images::NUMPIC_A.get_digit(time.mins /
-        // 10).unwrap().data(),         )
-        //         .unwrap();
-        //     st7789
-        //         .set_pixels(
-        //             Display::D4,
-        //             0,
-        //             0,
-        //             st7789.width(),
-        //             st7789.height(),
-        //             images::NUMPIC_A.get_digit(time.mins %
-        // 10).unwrap().data(),         )
-        //         .unwrap();
-        //     st7789
-        //         .set_pixels(
-        //             Display::D5,
-        //             0,
-        //             0,
-        //             st7789.width(),
-        //             st7789.height(),
-        //             images::NUMPIC_A.get_digit(time.secs /
-        // 10).unwrap().data(),         )
-        //         .unwrap();
-        //     st7789
-        //         .set_pixels(
-        //             Display::D6,
-        //             0,
-        //             0,
-        //             st7789.width(),
-        //             st7789.height(),
-        //             images::NUMPIC_A.get_digit(time.secs %
-        // 10).unwrap().data(),         )
-        //         .unwrap();
-        // }
-
-        // hprintln!("here");
-        //
+        lcd_clock.update().unwrap();
     }
 }

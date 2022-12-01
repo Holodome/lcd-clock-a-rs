@@ -78,7 +78,7 @@ impl Menupic {
         match opt {
             MenuOpt::Time => &self.0[0],
             MenuOpt::Alarm => &self.0[1],
-            MenuOpt::RGB => &self.0[2],
+            MenuOpt::Rgb => &self.0[2],
             MenuOpt::Brightness => &self.0[3],
             MenuOpt::TempHumidity => &self.0[4],
             MenuOpt::Return => &self.0[5],

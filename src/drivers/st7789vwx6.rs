@@ -184,8 +184,8 @@ where
     fn hard_reset(&mut self) {
         self.pins.rst().set_high().unwrap_infallible();
         // reset for at least 10 us as specified in datasheet.
-        // max rp2040 clock frequency is 133 mhz, so we need to sleep for at least 133 *
-        // 10 cycles.
+        // max rp2040 clock frequency is 133 mhz, so we need to sleep for at
+        // least 133 * 10 cycles.
         cortex_m::asm::delay(125 * 10);
         self.pins.rst().set_low().unwrap_infallible();
         cortex_m::asm::delay(125 * 10);
@@ -321,7 +321,7 @@ where
                 0,
                 self.width(),
                 self.height(),
-                (0..(WIDTH * HEIGHT)).map(|_| color.to_be_bytes()).flatten(),
+                (0..(WIDTH * HEIGHT)).flat_map(|_| color.to_be_bytes()),
             )?;
         }
 
@@ -384,6 +384,7 @@ pub enum Error {
     BusWrite,
 }
 
+#[allow(clippy::upper_case_acronyms)]
 enum Command {
     /// Memory data access control
     MADCTL = 0x36,

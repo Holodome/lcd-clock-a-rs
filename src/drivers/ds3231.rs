@@ -12,7 +12,7 @@ use embedded_hal::blocking::i2c::{Write, WriteRead};
 pub struct Temperature(u16);
 
 impl Temperature {
-    pub fn as_celcius(self) -> f32 {
+    pub fn as_celcius(&self) -> f32 {
         (self.0 >> 2) as f32 + (self.0 & 0x3) as f32 * 0.25
     }
 }

@@ -48,8 +48,8 @@ where
             let mut wrap_source = a.label();
             let mut do_zero = a.label();
 
-            // This PIO program shifts all bits of source repeatedly until it is zero while
-            // maintaining timings
+            // This PIO program shifts all bits of source repeatedly until it is
+            // zero while maintaining timings
             /*
              * wrap_target:
              *  out x, 1        [T3 - 1]
