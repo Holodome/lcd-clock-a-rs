@@ -1,13 +1,12 @@
 //! General project-wide functionality
 
-use rp_pico::hal::{gpio::PushPullOutput, pwm::ChannelId, spi::SpiDevice};
-
 use crate::drivers::{
     bme280::{self, BME280State, BME280},
     ds3231::{self, DS3231State, Time, DS3231},
     st7789vwx6::{self, Display, ST7789VWx6},
     ws2812::WS2812,
 };
+use rp_pico::hal::gpio::PushPullOutput;
 
 use crate::hal::{
     gpio::{
@@ -21,8 +20,9 @@ use crate::hal::{
     spi::{self, Spi},
 };
 
-#[derive(Clone, Copy, Debug)]
-pub enum MenuOpt {
+#[derive(Clone, Copy, Debug, Default)]
+pub enum MenuMode {
+    #[default]
     Time,
     Alarm,
     Rgb,
@@ -47,22 +47,31 @@ type WS2812Ty = WS2812<PIO0, SM0, Gpio22>;
 type DS3231Ty = DS3231<I2CBusTy>;
 type BME280Ty = BME280<I2CBusTy>;
 
-pub struct LcdClock {
+type BuzzerTy = ();
+
+pub struct LcdClockHardware {
     i2c_bus: Option<I2CBusTy>,
     ds3231: Option<DS3231State>,
     bme280: Option<BME280State>,
     st7789vwx6: ST7789VWx6Ty,
     ws2812: WS2812Ty,
+    buzzer: BuzzerTy,
 }
 
-impl LcdClock {
-    pub fn new(i2c_bus: I2CBusTy, st7789vwx6: ST7789VWx6Ty, ws2812: WS2812Ty) -> Self {
+impl LcdClockHardware {
+    pub fn new(
+        i2c_bus: I2CBusTy,
+        st7789vwx6: ST7789VWx6Ty,
+        ws2812: WS2812Ty,
+        buzzer: BuzzerTy,
+    ) -> Self {
         Self {
             i2c_bus: Some(i2c_bus),
             ds3231: None,
             bme280: None,
             st7789vwx6,
             ws2812,
+            buzzer,
         }
     }
 
@@ -110,6 +119,25 @@ impl LcdClock {
         self.i2c_bus.replace(i2c_bus);
         self.bme280.replace(bme280_state);
         Ok(result)
+    }
+}
+
+pub struct LcdClock {
+    hardware: LcdClockHardware,
+    menu_mode: MenuMode,
+}
+
+impl LcdClock {
+    pub fn new(hardware: LcdClockHardware) -> Self {
+        Self {
+            hardware,
+            menu_mode: Default::default(),
+        }
+    }
+
+    pub fn init(&mut self) -> Result<(), Error> {
+        self.hardware.init()?;
+        Ok(())
     }
 
     pub fn update(&mut self) -> Result<(), Error> {

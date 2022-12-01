@@ -2,7 +2,7 @@
 //! These are embedded directly in executable using include_bytes!.
 //! Images are generated using build script (build.rs).
 
-use crate::lcd_clock::MenuOpt;
+use crate::lcd_clock::MenuMode;
 
 pub struct Image(&'static [u8]);
 
@@ -74,14 +74,14 @@ make_numpic!(NUMPIC_D, "D");
 pub struct Menupic([Image; 6]);
 
 impl Menupic {
-    pub fn get_pic(&self, opt: MenuOpt) -> &Image {
+    pub fn get_pic(&self, opt: MenuMode) -> &Image {
         match opt {
-            MenuOpt::Time => &self.0[0],
-            MenuOpt::Alarm => &self.0[1],
-            MenuOpt::Rgb => &self.0[2],
-            MenuOpt::Brightness => &self.0[3],
-            MenuOpt::TempHumidity => &self.0[4],
-            MenuOpt::Return => &self.0[5],
+            MenuMode::Time => &self.0[0],
+            MenuMode::Alarm => &self.0[1],
+            MenuMode::Rgb => &self.0[2],
+            MenuMode::Brightness => &self.0[3],
+            MenuMode::TempHumidity => &self.0[4],
+            MenuMode::Return => &self.0[5],
         }
     }
 }

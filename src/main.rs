@@ -1,7 +1,7 @@
 #![no_std]
 #![no_main]
 
-use lcd_clock::LcdClock;
+use lcd_clock::{LcdClock, LcdClockHardware};
 #[cfg(not(feature = "semihosting"))]
 use panic_halt as _;
 #[cfg(feature = "semihosting")]
@@ -58,7 +58,7 @@ fn main() -> ! {
     .unwrap();
 
     let pins = Pins::new(dp.IO_BANK0, dp.PADS_BANK0, sio.gpio_bank0, &mut dp.RESETS);
-    let mut pwm_slices = hal::pwm::Slices::new(dp.PWM, &mut dp.RESETS);
+    let pwm_slices = hal::pwm::Slices::new(dp.PWM, &mut dp.RESETS);
 
     let i2c_bus = {
         let sda = pins.gpio6.into_mode::<gpio::FunctionI2C>();
@@ -115,7 +115,8 @@ fn main() -> ! {
         WS2812::new(6, rgb, &mut pio, sm0, clocks.peripheral_clock.freq()).unwrap()
     };
 
-    let mut lcd_clock = LcdClock::new(i2c_bus, st7789vw, ws2812);
+    let hardware = LcdClockHardware::new(i2c_bus, st7789vw, ws2812, ());
+    let mut lcd_clock = LcdClock::new(hardware);
     lcd_clock.init().unwrap();
 
     loop {
