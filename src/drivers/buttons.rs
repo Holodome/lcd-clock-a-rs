@@ -26,9 +26,9 @@ impl<P> Button<P>
 where
     P: InputPin<Error = Infallible>,
 {
-    pub fn new(pin: P, integrator_max: u32) -> Self {
+    pub fn new(pin: Debounce<P>) -> Self {
         Self {
-            pin: Debounce::new(pin, integrator_max),
+            pin,
             state: ButtonState::Released,
         }
     }

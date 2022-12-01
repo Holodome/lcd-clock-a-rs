@@ -2,6 +2,7 @@
 
 use crate::drivers::{
     bme280::{self, BME280State, BME280},
+    buttons::{Button, ButtonEvent, Debounce},
     ds3231::{self, DS3231State, Time, DS3231},
     st7789vwx6::{self, Display, ST7789VWx6},
     ws2812::WS2812,
@@ -10,8 +11,8 @@ use rp_pico::hal::gpio::PushPullOutput;
 
 use crate::hal::{
     gpio::{
-        bank0::{Gpio12, Gpio2, Gpio22, Gpio3, Gpio4, Gpio6, Gpio7, Gpio8},
-        FunctionI2C, Pin,
+        bank0::{Gpio12, Gpio15, Gpio16, Gpio17, Gpio2, Gpio22, Gpio3, Gpio4, Gpio6, Gpio7, Gpio8},
+        FunctionI2C, Pin, PullDownInput,
     },
     i2c::I2C,
     pac::{I2C1, PIO0, SPI1},
@@ -31,6 +32,30 @@ pub enum MenuMode {
     Return,
 }
 
+impl MenuMode {
+    pub fn left(self) -> Self {
+        match self {
+            Self::Time => Self::Return,
+            Self::Alarm => Self::Time,
+            Self::Rgb => Self::Alarm,
+            Self::Brightness => Self::Rgb,
+            Self::TempHumidity => Self::Brightness,
+            Self::Return => Self::TempHumidity,
+        }
+    }
+
+    pub fn right(self) -> Self {
+        match self {
+            Self::Time => Self::Alarm,
+            Self::Alarm => Self::Rgb,
+            Self::Rgb => Self::Brightness,
+            Self::Brightness => Self::TempHumidity,
+            Self::TempHumidity => Self::Return,
+            Self::Return => Self::Time,
+        }
+    }
+}
+
 type I2CBusTy = I2C<I2C1, (Pin<Gpio6, FunctionI2C>, Pin<Gpio7, FunctionI2C>)>;
 type ST7789VWx6Ty = ST7789VWx6<
     (
@@ -47,6 +72,9 @@ type WS2812Ty = WS2812<PIO0, SM0, Gpio22>;
 type DS3231Ty = DS3231<I2CBusTy>;
 type BME280Ty = BME280<I2CBusTy>;
 
+type LeftBtnTy = Button<Pin<Gpio15, PullDownInput>>;
+type RightBtnTy = Button<Pin<Gpio16, PullDownInput>>;
+type ModeBtnTy = Button<Pin<Gpio17, PullDownInput>>;
 type BuzzerTy = ();
 
 pub struct LcdClockHardware {
@@ -56,6 +84,9 @@ pub struct LcdClockHardware {
     st7789vwx6: ST7789VWx6Ty,
     ws2812: WS2812Ty,
     buzzer: BuzzerTy,
+    left: LeftBtnTy,
+    right: RightBtnTy,
+    mode: ModeBtnTy,
 }
 
 impl LcdClockHardware {
@@ -63,6 +94,9 @@ impl LcdClockHardware {
         i2c_bus: I2CBusTy,
         st7789vwx6: ST7789VWx6Ty,
         ws2812: WS2812Ty,
+        left: LeftBtnTy,
+        right: RightBtnTy,
+        mode: ModeBtnTy,
         buzzer: BuzzerTy,
     ) -> Self {
         Self {
@@ -71,6 +105,9 @@ impl LcdClockHardware {
             bme280: None,
             st7789vwx6,
             ws2812,
+            left,
+            right,
+            mode,
             buzzer,
         }
     }
@@ -125,6 +162,7 @@ impl LcdClockHardware {
 pub struct LcdClock {
     hardware: LcdClockHardware,
     menu_mode: MenuMode,
+    is_in_menu: bool,
 }
 
 impl LcdClock {
@@ -132,6 +170,7 @@ impl LcdClock {
         Self {
             hardware,
             menu_mode: Default::default(),
+            is_in_menu: false,
         }
     }
 
@@ -141,6 +180,39 @@ impl LcdClock {
     }
 
     pub fn update(&mut self) -> Result<(), Error> {
+        self.update_buttons();
+
+        match self.menu_mode {
+            MenuMode::Time => self.mode_time()?,
+            _ => todo!(),
+        }
+        Ok(())
+    }
+
+    fn update_buttons(&mut self) {
+        let mode_button_transition = self.hardware.mode.update();
+        let left_button_transition = self.hardware.left.update();
+        let right_button_transition = self.hardware.right.update();
+        if self.is_in_menu {
+            if let Some(ButtonEvent::Release) = mode_button_transition {
+                self.is_in_menu = false;
+            }
+        } else {
+            if let Some(ButtonEvent::Release) = mode_button_transition {
+                self.is_in_menu = true;
+            }
+
+            if let Some(ButtonEvent::Release) = left_button_transition {
+                self.menu_mode = self.menu_mode.left();
+            }
+
+            if let Some(ButtonEvent::Release) = right_button_transition {
+                self.menu_mode = self.menu_mode.right();
+            }
+        }
+    }
+
+    fn mode_time(&mut self) -> Result<(), Error> {
         Ok(())
     }
 }

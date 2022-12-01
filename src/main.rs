@@ -1,6 +1,7 @@
 #![no_std]
 #![no_main]
 
+use drivers::buttons::{Button, Debounce};
 use lcd_clock::{LcdClock, LcdClockHardware};
 #[cfg(not(feature = "semihosting"))]
 use panic_halt as _;
@@ -115,10 +116,31 @@ fn main() -> ! {
         WS2812::new(6, rgb, &mut pio, sm0, clocks.peripheral_clock.freq()).unwrap()
     };
 
-    let hardware = LcdClockHardware::new(i2c_bus, st7789vw, ws2812, ());
+    let button_debounce_integrator = 10;
+    let button_right = Button::new(Debounce::new(
+        pins.gpio15.into_pull_down_input(),
+        button_debounce_integrator,
+    ));
+    let button_left = Button::new(Debounce::new(
+        pins.gpio16.into_pull_down_input(),
+        button_debounce_integrator,
+    ));
+    let button_mode = Button::new(Debounce::new(
+        pins.gpio17.into_pull_down_input(),
+        button_debounce_integrator,
+    ));
+
+    let hardware = LcdClockHardware::new(
+        i2c_bus,
+        st7789vw,
+        ws2812,
+        button_right,
+        button_left,
+        button_mode,
+        (),
+    );
     let mut lcd_clock = LcdClock::new(hardware);
     lcd_clock.init().unwrap();
-
     loop {
         lcd_clock.update().unwrap();
     }
