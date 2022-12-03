@@ -79,10 +79,10 @@ type BuzzerTy = ();
 
 pub struct LcdClockHardware {
     i2c_bus: Option<I2CBusTy>,
-    ds3231: Option<DS3231State>,
-    bme280: Option<BME280State>,
-    st7789vwx6: ST7789VWx6Ty,
-    ws2812: WS2812Ty,
+    rtc: Option<DS3231State>,
+    humidity_sensor: Option<BME280State>,
+    displays: ST7789VWx6Ty,
+    led_strip: WS2812Ty,
     buzzer: BuzzerTy,
     left: LeftBtnTy,
     right: RightBtnTy,
@@ -92,8 +92,8 @@ pub struct LcdClockHardware {
 impl LcdClockHardware {
     pub fn new(
         i2c_bus: I2CBusTy,
-        st7789vwx6: ST7789VWx6Ty,
-        ws2812: WS2812Ty,
+        displays: ST7789VWx6Ty,
+        led_strip: WS2812Ty,
         left: LeftBtnTy,
         right: RightBtnTy,
         mode: ModeBtnTy,
@@ -101,10 +101,10 @@ impl LcdClockHardware {
     ) -> Self {
         Self {
             i2c_bus: Some(i2c_bus),
-            ds3231: None,
-            bme280: None,
-            st7789vwx6,
-            ws2812,
+            rtc: None,
+            humidity_sensor: None,
+            displays,
+            led_strip,
             left,
             right,
             mode,
@@ -113,13 +113,14 @@ impl LcdClockHardware {
     }
 
     pub fn init(&mut self) -> Result<(), Error> {
-        self.ds3231.replace(DS3231State::new(DS3231_I2C_ADDR));
-        self.bme280.replace(BME280State::new(BME280_I2C_ADDR));
-        self.with_ds3231(DS3231Ty::init)?.map_err(Error::Rtc)?;
-        self.with_bme280(BME280Ty::init)?
+        self.rtc.replace(DS3231State::new(DS3231_I2C_ADDR));
+        self.humidity_sensor
+            .replace(BME280State::new(BME280_I2C_ADDR));
+        self.with_rtc(DS3231Ty::init)?.map_err(Error::Rtc)?;
+        self.with_humidity_sensor(BME280Ty::init)?
             .map_err(Error::HumiditySensor)?;
-        self.st7789vwx6.init().map_err(Error::Display)?;
-        self.st7789vwx6.clear_all(0).map_err(Error::Display)?;
+        self.displays.init().map_err(Error::Display)?;
+        self.displays.clear_all(0).map_err(Error::Display)?;
 
         Ok(())
     }
@@ -127,12 +128,12 @@ impl LcdClockHardware {
     /// Calls f on instance of ds3231. I2C bus is shared between ds3231 and
     /// bme280 drivers and rust type system forbids us from using two
     /// drivers simultaneosly. Thus i2c_bus field acts like a mutex.
-    fn with_ds3231<R>(&mut self, f: impl FnOnce(&mut DS3231Ty) -> R) -> Result<R, Error> {
-        if self.i2c_bus.is_none() || self.ds3231.is_none() {
+    fn with_rtc<R>(&mut self, f: impl FnOnce(&mut DS3231Ty) -> R) -> Result<R, Error> {
+        if self.i2c_bus.is_none() || self.rtc.is_none() {
             return Err(Error::I2CClaim);
         }
 
-        let (Some(i2c_bus), Some(ds3231_state)) = (self.i2c_bus.take(), self.ds3231.take()) else {
+        let (Some(i2c_bus), Some(ds3231_state)) = (self.i2c_bus.take(), self.rtc.take()) else {
             return Err(Error::I2CClaim);
         };
 
@@ -140,13 +141,17 @@ impl LcdClockHardware {
         let result = f(&mut ds3231);
         let (i2c_bus, ds3231_state) = ds3231.release();
         self.i2c_bus.replace(i2c_bus);
-        self.ds3231.replace(ds3231_state);
+        self.rtc.replace(ds3231_state);
         Ok(result)
     }
 
     /// Calls f on instance of bme280. For details see with_ds3231.
-    fn with_bme280<R>(&mut self, f: impl FnOnce(&mut BME280Ty) -> R) -> Result<R, Error> {
-        let (Some(i2c_bus), Some(bme280_state)) = (self.i2c_bus.take(), self.bme280.take()) else {
+    fn with_humidity_sensor<R>(&mut self, f: impl FnOnce(&mut BME280Ty) -> R) -> Result<R, Error> {
+        if self.i2c_bus.is_none() || self.humidity_sensor.is_none() {
+            return Err(Error::I2CClaim);
+        }
+
+        let (Some(i2c_bus), Some(bme280_state)) = (self.i2c_bus.take(), self.humidity_sensor.take()) else {
             return Err(Error::I2CClaim);
         };
 
@@ -154,7 +159,7 @@ impl LcdClockHardware {
         let result = f(&mut bme280);
         let (i2c_bus, bme280_state) = bme280.release();
         self.i2c_bus.replace(i2c_bus);
-        self.bme280.replace(bme280_state);
+        self.humidity_sensor.replace(bme280_state);
         Ok(result)
     }
 }
