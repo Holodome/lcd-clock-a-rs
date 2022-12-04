@@ -312,21 +312,6 @@ where
             Ok(())
         })
     }
-
-    pub fn clear_all(&mut self, color: u16) -> Result<(), Error> {
-        for display in Display::all() {
-            self.set_pixels_iter(
-                display,
-                0,
-                0,
-                self.width(),
-                self.height(),
-                (0..(WIDTH * HEIGHT)).flat_map(|_| color.to_be_bytes()),
-            )?;
-        }
-
-        Ok(())
-    }
 }
 
 pub trait Pins {

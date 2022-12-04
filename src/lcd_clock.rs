@@ -10,7 +10,7 @@ use crate::{
     },
     images::{MENUPIC_A, NUMPIC_A},
     led_strip::LedStripState,
-    misc::Sin,
+    misc::{ColorRGB565, ColorRGB8, Sin},
 };
 use rp_pico::hal::gpio::PushPullOutput;
 
@@ -26,7 +26,7 @@ use crate::hal::{
     spi::{self, Spi},
 };
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum AppMode {
     #[default]
     Time,
@@ -138,7 +138,7 @@ impl LcdClockHardware {
         self.with_humidity_sensor(BME280Ty::init)?
             .map_err(Error::HumiditySensor)?;
         self.displays.init().map_err(Error::Display)?;
-        self.displays.clear_all(0).map_err(Error::Display)?;
+        self.display_clear_all(ColorRGB565::from(ColorRGB8::black()))?;
 
         Ok(())
     }
@@ -179,6 +179,46 @@ impl LcdClockHardware {
         self.i2c_bus.replace(i2c_bus);
         self.humidity_sensor.replace(bme280_state);
         Ok(result)
+    }
+
+    fn display_clear_all(&mut self, color: ColorRGB565) -> Result<(), Error> {
+        let w = self.displays.width();
+        let h = self.displays.height();
+        for display in Display::all() {
+            self.displays
+                .set_pixels_iter(
+                    display,
+                    0,
+                    0,
+                    w,
+                    h,
+                    (0..(w * h)).flat_map(|_| color.to_be()),
+                )
+                .map_err(Error::Display)?;
+        }
+
+        Ok(())
+    }
+
+    fn display_draw_rect(
+        &mut self,
+        display: Display,
+        x_min: u16,
+        y_min: u16,
+        x_max: u16,
+        y_max: u16,
+        color: ColorRGB565,
+    ) -> Result<(), Error> {
+        self.displays
+            .set_pixels_iter(
+                display,
+                x_min,
+                y_min,
+                x_max,
+                y_max,
+                (0..((x_max - x_min) * (y_max - y_min))).flat_map(|_| color.to_be()),
+            )
+            .map_err(Error::Display)
     }
 }
 
@@ -277,6 +317,7 @@ impl LcdClock {
             }
         }
 
+        // TODO: dynamic update time (using rtc or system timer)
         cortex_m::asm::delay(125 * 1000 * 16);
         self.hardware.led_strip.display(self.led_strip.update());
 
@@ -293,6 +334,27 @@ impl LcdClock {
                 .displays
                 .set_pixels(display, 0, 0, w, h, pix)
                 .map_err(Error::Display)?;
+
+            if mode == selected_mode {
+                let w = self.hardware.displays.width();
+                let h = self.hardware.displays.height();
+                let thickness = 8;
+                let color = ColorRGB565::from(ColorRGB8::red());
+                self.hardware
+                    .display_draw_rect(display, 0, 0, w, thickness, color)?;
+                self.hardware
+                    .display_draw_rect(display, 0, thickness, thickness, h, color)?;
+                self.hardware
+                    .display_draw_rect(display, w - thickness, thickness, w, h, color)?;
+                self.hardware.display_draw_rect(
+                    display,
+                    thickness,
+                    h - thickness,
+                    w - w * thickness,
+                    h,
+                    color,
+                )?;
+            }
         }
 
         Ok(())

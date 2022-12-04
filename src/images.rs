@@ -39,6 +39,7 @@ impl Numpic {
 
 macro_rules! make_numpic_img {
     ($letter:literal, $num:literal) => {
+        // make_image(&[0])
         make_image(include_bytes!(concat!(
             "../target/img/numpic/",
             $letter,
@@ -88,6 +89,7 @@ impl Menupic {
 
 macro_rules! make_menupic_img {
     ($letter:literal, $num:literal) => {
+        // make_image(&[0])
         make_image(include_bytes!(concat!(
             "../target/img/menupic/",
             $letter,

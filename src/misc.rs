@@ -24,6 +24,14 @@ impl From<ColorRGB8> for (u8, u8, u8) {
 }
 
 impl ColorRGB8 {
+    pub fn black() -> Self {
+        Self {
+            r: 0x00,
+            g: 0x00,
+            b: 0x00,
+        }
+    }
+
     pub fn red() -> Self {
         Self {
             r: 0xff,
@@ -73,7 +81,38 @@ impl ColorRGB8 {
     }
 }
 
+/// Stores color in RGB565 format (big endian) so it is more suitable for using
+/// in rendering on st7789 display (which uses be).
+#[derive(Clone, Copy, Default)]
 pub struct ColorRGB565(pub u16);
+
+impl ColorRGB565 {
+    pub fn to_be(self) -> [u8; 2] {
+        self.0.to_be_bytes()
+    }
+}
+
+impl From<u16> for ColorRGB565 {
+    fn from(value: u16) -> Self {
+        Self(value)
+    }
+}
+
+impl From<ColorRGB565> for u16 {
+    fn from(value: ColorRGB565) -> Self {
+        value.0
+    }
+}
+
+impl From<ColorRGB8> for ColorRGB565 {
+    fn from(value: ColorRGB8) -> Self {
+        let r = (value.r >> 3) as u16;
+        let g = (value.g >> 2) as u16;
+        let b = (value.b >> 3) as u16;
+        let rgb = (r << 11) | (g << 5) | b;
+        Self(rgb)
+    }
+}
 
 pub fn hsv2rgb(hue: f32, sat: f32, val: f32) -> (f32, f32, f32) {
     let c = val * sat;
