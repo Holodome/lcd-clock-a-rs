@@ -9,6 +9,8 @@ use crate::{
         ws2812::WS2812,
     },
     images::{MENUPIC_A, NUMPIC_A},
+    led_strip::LedStripState,
+    misc::Sin,
 };
 use rp_pico::hal::gpio::PushPullOutput;
 
@@ -227,11 +229,9 @@ impl State {
             } else {
                 self.menu = Some(menu);
             }
-        } else {
-            if let Some(ButtonEvent::Release) = mode {
-                self.menu = Some(self.mode);
-                self.transition = true;
-            }
+        } else if let Some(ButtonEvent::Release) = mode {
+            self.menu = Some(self.mode);
+            self.transition = true;
         }
     }
 }
@@ -240,17 +240,18 @@ pub struct LcdClock {
     hardware: LcdClockHardware,
     state: State,
 
+    led_strip: LedStripState,
     /// Used as comparator value needed to decide which displays we want to
     /// update
     last_time: Time,
 }
 
 impl LcdClock {
-    pub fn new(hardware: LcdClockHardware) -> Self {
+    pub fn new(hardware: LcdClockHardware, sin: Sin) -> Self {
         Self {
             hardware,
             state: Default::default(),
-
+            led_strip: LedStripState::new(sin),
             last_time: Default::default(),
         }
     }
@@ -276,7 +277,8 @@ impl LcdClock {
             }
         }
 
-        self.hardware.led_strip.display(0x70, 0x20, 0x70);
+        cortex_m::asm::delay(125 * 1000 * 16);
+        self.hardware.led_strip.display(self.led_strip.update());
 
         Ok(())
     }

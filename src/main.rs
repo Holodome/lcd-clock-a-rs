@@ -33,6 +33,8 @@ mod bell;
 mod drivers;
 mod images;
 mod lcd_clock;
+mod led_strip;
+mod misc;
 
 use crate::drivers::{
     st7789vwx6::{self, ST7789VWx6},
@@ -113,7 +115,7 @@ fn main() -> ! {
     let ws2812 = {
         let (mut pio, sm0, _, _, _) = dp.PIO0.split(&mut dp.RESETS);
         let rgb = pins.gpio22.into_mode();
-        WS2812::new(6, rgb, &mut pio, sm0, clocks.peripheral_clock.freq()).unwrap()
+        WS2812::new(rgb, &mut pio, sm0, clocks.peripheral_clock.freq()).unwrap()
     };
 
     let button_debounce_integrator = 2;
@@ -139,7 +141,9 @@ fn main() -> ! {
         button_mode,
         (),
     );
-    let mut lcd_clock = LcdClock::new(hardware);
+
+    let sin = hal::rom_data::float_funcs::fsin::ptr();
+    let mut lcd_clock = LcdClock::new(hardware, sin);
 
     // delay for 2ms so displays are initialized
     cortex_m::asm::delay(125 * 1000 * 20);

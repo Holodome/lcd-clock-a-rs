@@ -1,9 +1,12 @@
 //! WS2812 PIO
 
-use crate::hal::{
-    self,
-    gpio::{Function, FunctionConfig, Pin, PinId, ValidPinMode},
-    pio::{PIOExt, StateMachineIndex, Tx, UninitStateMachine, PIO},
+use crate::{
+    hal::{
+        self,
+        gpio::{Function, FunctionConfig, Pin, PinId, ValidPinMode},
+        pio::{PIOExt, StateMachineIndex, Tx, UninitStateMachine, PIO},
+    },
+    misc::ColorRGB8,
 };
 use fugit::HertzU32;
 
@@ -16,8 +19,6 @@ where
 {
     tx: Tx<(P, SM)>,
     _pin: Pin<I, Function<P>>,
-
-    led_count: usize,
 }
 
 impl<P, SM, I> WS2812<P, SM, I>
@@ -28,7 +29,6 @@ where
     SM: StateMachineIndex,
 {
     pub fn new(
-        led_count: usize,
         pin: Pin<I, Function<P>>,
         pio: &mut PIO<P>,
         sm: UninitStateMachine<(P, SM)>,
@@ -93,16 +93,13 @@ where
         sm.set_pindirs([(I::DYN.num, hal::pio::PinDir::Output)]);
         sm.start();
 
-        Ok(Self {
-            led_count,
-            tx,
-            _pin: pin,
-        })
+        Ok(Self { tx, _pin: pin })
     }
 
-    pub fn display(&mut self, r: u8, g: u8, b: u8) {
-        let word = (u32::from(g) << 24) | (u32::from(r) << 16) | (u32::from(b) << 8);
-        for _ in 0..self.led_count {
+    pub fn display(&mut self, colors: &[ColorRGB8]) {
+        for &color in colors.iter() {
+            let (r, g, b) = color.into();
+            let word = (u32::from(g) << 24) | (u32::from(r) << 16) | (u32::from(b) << 8);
             while !self.tx.write(word) {
                 cortex_m::asm::nop();
             }
