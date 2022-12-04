@@ -140,8 +140,11 @@ fn main() -> ! {
         (),
     );
     let mut lcd_clock = LcdClock::new(hardware);
+
+    // delay for 2ms so displays are initialized
+    cortex_m::asm::delay(125 * 1000 * 20);
     lcd_clock.init().unwrap();
-    hprintln!("here");
+
     loop {
         lcd_clock.update().unwrap();
     }

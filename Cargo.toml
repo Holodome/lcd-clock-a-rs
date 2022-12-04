@@ -26,6 +26,7 @@ codegen-units = 1 # better optimizations
 debug = true # symbols are nice and they don't increase the size on Flash
 lto = true # better optimizations
 opt-level = "s"
+strip = true
 
 [build-dependencies]
 image = "0.24.5"

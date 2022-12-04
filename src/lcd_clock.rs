@@ -230,6 +230,7 @@ impl State {
         } else {
             if let Some(ButtonEvent::Release) = mode {
                 self.menu = Some(self.mode);
+                self.transition = true;
             }
         }
     }
@@ -264,7 +265,9 @@ impl LcdClock {
 
         let transition = self.state.eat_transition();
         if let Some(menu_mode) = self.state.menu {
-            self.mode_menu(menu_mode)?;
+            if transition {
+                self.mode_menu(menu_mode)?;
+            }
         } else {
             let mode = self.state.mode;
             match mode {
@@ -272,6 +275,8 @@ impl LcdClock {
                 _ => todo!(),
             }
         }
+
+        self.hardware.led_strip.display(0x70, 0x20, 0x70);
 
         Ok(())
     }

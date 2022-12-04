@@ -28,7 +28,7 @@ pub const HEIGHT: u16 = 240;
 
 /// One of the six displays left-to-right.
 /// These are identical and are driven by 3 CS lines.
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub enum Display {
     D1,
     D2,

@@ -67,9 +67,9 @@ macro_rules! make_numpic {
 }
 
 make_numpic!(NUMPIC_A, "A");
-make_numpic!(NUMPIC_B, "B");
-make_numpic!(NUMPIC_C, "C");
-make_numpic!(NUMPIC_D, "D");
+// make_numpic!(NUMPIC_B, "B");
+// make_numpic!(NUMPIC_C, "C");
+// make_numpic!(NUMPIC_D, "D");
 
 pub struct Menupic([Image; 6]);
 
@@ -112,4 +112,4 @@ macro_rules! make_menupic {
 }
 
 make_menupic!(MENUPIC_A, "A");
-make_menupic!(MENUPIC_B, "B");
+// make_menupic!(MENUPIC_B, "B");
