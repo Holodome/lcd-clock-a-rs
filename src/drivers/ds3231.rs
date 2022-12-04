@@ -60,7 +60,7 @@ pub struct Calendar {
     pub date: u8,
 }
 
-#[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Default)]
+#[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Default, Clone, Copy)]
 pub struct Time {
     pub hours: u8,
     pub mins: u8,

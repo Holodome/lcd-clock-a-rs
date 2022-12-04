@@ -116,7 +116,7 @@ fn main() -> ! {
         WS2812::new(6, rgb, &mut pio, sm0, clocks.peripheral_clock.freq()).unwrap()
     };
 
-    let button_debounce_integrator = 10;
+    let button_debounce_integrator = 2;
     let button_right = Button::new(Debounce::new(
         pins.gpio15.into_pull_down_input(),
         button_debounce_integrator,
@@ -141,6 +141,7 @@ fn main() -> ! {
     );
     let mut lcd_clock = LcdClock::new(hardware);
     lcd_clock.init().unwrap();
+    hprintln!("here");
     loop {
         lcd_clock.update().unwrap();
     }
