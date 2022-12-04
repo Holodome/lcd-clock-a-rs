@@ -1,10 +1,10 @@
 use crate::misc::{hsv2rgb_u8, ColorRGB8, Sin};
 
-const LED_COUNT: usize = 6;
+pub const LED_COUNT: usize = 6;
 const DEFAULT_BRIGHTNESS: u8 = 0x40;
 
 #[derive(Clone, Copy, Debug, Default)]
-enum LedMode {
+pub enum LedMode {
     Off,
     #[default]
     Sin,
@@ -69,6 +69,10 @@ impl LedStripState {
         }
     }
 
+    pub fn mode(&self) -> LedMode {
+        self.mode
+    }
+
     pub fn left(&mut self) {
         self.mode = self.mode.left();
         self.transition = true;
@@ -79,34 +83,42 @@ impl LedStripState {
         self.transition = true;
     }
 
-    pub fn update(&mut self) -> &[ColorRGB8; LED_COUNT] {
+    pub fn colors(&self) -> &[ColorRGB8; LED_COUNT] {
+        &self.colors
+    }
+
+    pub fn update(&mut self) {
         if self.transition {
             self.transition = false;
-            match self.mode {
+            let colors = match self.mode {
                 LedMode::Sin => {
-                    self.colors = [Default::default(); LED_COUNT];
                     self.t = 0.0;
+                    [Default::default(); LED_COUNT]
                 }
-                LedMode::Off => self.colors = [Default::default(); LED_COUNT],
-                LedMode::Red => self.colors = [ColorRGB8::red(); LED_COUNT],
-                LedMode::Green => self.colors = [ColorRGB8::green(); LED_COUNT],
-                LedMode::Blue => self.colors = [ColorRGB8::blue(); LED_COUNT],
-                LedMode::Cyan => self.colors = [ColorRGB8::cyan(); LED_COUNT],
-                LedMode::Yellow => self.colors = [ColorRGB8::yellow(); LED_COUNT],
-                LedMode::Pink => self.colors = [ColorRGB8::pink(); LED_COUNT],
-            }
+                LedMode::Off => [Default::default(); LED_COUNT],
+                LedMode::Red => [ColorRGB8::red(); LED_COUNT],
+                LedMode::Green => [ColorRGB8::green(); LED_COUNT],
+                LedMode::Blue => [ColorRGB8::blue(); LED_COUNT],
+                LedMode::Cyan => [ColorRGB8::cyan(); LED_COUNT],
+                LedMode::Yellow => [ColorRGB8::yellow(); LED_COUNT],
+                LedMode::Pink => [ColorRGB8::pink(); LED_COUNT],
+            };
+
+            self.colors = colors.map(|color| adjust_brightness(color, self.brightness));
         }
 
         if let LedMode::Sin = self.mode {
             for (i, led) in self.colors.iter_mut().enumerate() {
-                // An offset to give 3 consecutive LEDs a different color:
-                let hue_offs = match i % 3 {
-                    1 => 0.25,
-                    2 => 0.5,
-                    _ => 0.0,
+                // An offset to give 6 consecutive LEDs a different color:
+                let max_offs = 0.5;
+                let modulo = i % LED_COUNT;
+                let hue_offs = if modulo != 0 {
+                    max_offs / modulo as f32
+                } else {
+                    0.0
                 };
 
-                let sin_11 = (self.sin)((self.t + hue_offs) * 2.0 * core::f32::consts::PI);
+                let sin_11 = (self.sin)((self.t + hue_offs) * core::f32::consts::TAU);
                 let sin_01 = (sin_11 + 1.0) * 0.5;
 
                 let hue = 360.0 * sin_01;
@@ -114,12 +126,7 @@ impl LedStripState {
                 let val = 1.0;
 
                 let rgb = hsv2rgb_u8(hue, sat, val);
-                let rgb = (
-                    ((rgb.0 as u16 * self.brightness as u16) / 0xff) as u8,
-                    ((rgb.1 as u16 * self.brightness as u16) / 0xff) as u8,
-                    ((rgb.2 as u16 * self.brightness as u16) / 0xff) as u8,
-                );
-                *led = rgb.into();
+                *led = adjust_brightness(rgb.into(), self.brightness);
             }
 
             self.t += (16.0 / 1000.0) * self.animation_speed;
@@ -127,6 +134,15 @@ impl LedStripState {
                 self.t -= 1.0;
             }
         }
-        &self.colors
     }
+}
+
+fn adjust_brightness(color: ColorRGB8, brightness: u8) -> ColorRGB8 {
+    let rgb = (
+        ((color.r as u16 * brightness as u16) / 0xff) as u8,
+        ((color.g as u16 * brightness as u16) / 0xff) as u8,
+        ((color.b as u16 * brightness as u16) / 0xff) as u8,
+    );
+
+    rgb.into()
 }

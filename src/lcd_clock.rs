@@ -9,15 +9,14 @@ use crate::{
         ws2812::WS2812,
     },
     images::{MENUPIC_A, NUMPIC_A},
-    led_strip::LedStripState,
+    led_strip::{LedMode, LedStripState, LED_COUNT},
     misc::{ColorRGB565, ColorRGB8, Sin},
 };
-use rp_pico::hal::gpio::PushPullOutput;
 
 use crate::hal::{
     gpio::{
         bank0::{Gpio12, Gpio15, Gpio16, Gpio17, Gpio2, Gpio22, Gpio3, Gpio4, Gpio6, Gpio7, Gpio8},
-        FunctionI2C, Pin, PullDownInput,
+        FunctionI2C, Pin, PullDownInput, PushPullOutput,
     },
     i2c::I2C,
     pac::{I2C1, PIO0, SPI1},
@@ -181,20 +180,24 @@ impl LcdClockHardware {
         Ok(result)
     }
 
-    fn display_clear_all(&mut self, color: ColorRGB565) -> Result<(), Error> {
+    fn display_fill(&mut self, display: Display, color: ColorRGB565) -> Result<(), Error> {
         let w = self.displays.width();
         let h = self.displays.height();
+        self.displays
+            .set_pixels_iter(
+                display,
+                0,
+                0,
+                w,
+                h,
+                (0..(w * h)).flat_map(|_| color.to_be()),
+            )
+            .map_err(Error::Display)
+    }
+
+    fn display_clear_all(&mut self, color: ColorRGB565) -> Result<(), Error> {
         for display in Display::all() {
-            self.displays
-                .set_pixels_iter(
-                    display,
-                    0,
-                    0,
-                    w,
-                    h,
-                    (0..(w * h)).flat_map(|_| color.to_be()),
-                )
-                .map_err(Error::Display)?;
+            self.display_fill(display, color)?;
         }
 
         Ok(())
@@ -226,21 +229,21 @@ struct State {
     mode: AppMode,
     // if we are in menu, this is 'Some'
     menu: Option<AppMode>,
+    led_strip: LedStripState,
 
     transition: bool,
 }
 
-impl Default for State {
-    fn default() -> Self {
+impl State {
+    pub fn new(sin: Sin) -> Self {
         Self {
             mode: AppMode::Time,
+            led_strip: LedStripState::new(sin),
             menu: None,
             transition: true,
         }
     }
-}
 
-impl State {
     fn eat_transition(&mut self) -> bool {
         let result = self.transition;
         self.transition = false;
@@ -253,26 +256,47 @@ impl State {
         left: Option<ButtonEvent>,
         right: Option<ButtonEvent>,
     ) {
+        let mode = matches!(mode, Some(ButtonEvent::Release));
+        let left = matches!(left, Some(ButtonEvent::Release));
+        let right = matches!(right, Some(ButtonEvent::Release));
         if let Some(menu) = self.menu.take() {
-            if let Some(ButtonEvent::Release) = mode {
+            if mode {
                 if let AppMode::Return = menu {
                 } else {
                     self.mode = menu;
                 }
                 self.transition = true;
-            } else if let Some(ButtonEvent::Release) = left {
+            } else if left {
                 self.menu = Some(menu.left());
                 self.transition = true;
-            } else if let Some(ButtonEvent::Release) = right {
+            } else if right {
                 self.menu = Some(menu.right());
                 self.transition = true;
             } else {
                 self.menu = Some(menu);
             }
-        } else if let Some(ButtonEvent::Release) = mode {
-            self.menu = Some(self.mode);
+        } else if mode {
+            self.menu = Some(AppMode::Return);
             self.transition = true;
+        } else {
+            match self.mode {
+                AppMode::Rgb => {
+                    if left {
+                        self.led_strip.left();
+                        self.transition = true;
+                    }
+                    if right {
+                        self.led_strip.right();
+                        self.transition = true;
+                    }
+                }
+                _ => {}
+            }
         }
+    }
+
+    pub fn update(&mut self) {
+        self.led_strip.update();
     }
 }
 
@@ -280,7 +304,6 @@ pub struct LcdClock {
     hardware: LcdClockHardware,
     state: State,
 
-    led_strip: LedStripState,
     /// Used as comparator value needed to decide which displays we want to
     /// update
     last_time: Time,
@@ -290,8 +313,7 @@ impl LcdClock {
     pub fn new(hardware: LcdClockHardware, sin: Sin) -> Self {
         Self {
             hardware,
-            state: Default::default(),
-            led_strip: LedStripState::new(sin),
+            state: State::new(sin),
             last_time: Default::default(),
         }
     }
@@ -313,13 +335,17 @@ impl LcdClock {
             let mode = self.state.mode;
             match mode {
                 AppMode::Time => self.mode_time(transition)?,
+                AppMode::Rgb => self.mode_rgb(transition)?,
                 _ => todo!(),
             }
         }
 
         // TODO: dynamic update time (using rtc or system timer)
         cortex_m::asm::delay(125 * 1000 * 16);
-        self.hardware.led_strip.display(self.led_strip.update());
+        self.state.update();
+        self.hardware
+            .led_strip
+            .display(self.state.led_strip.colors());
 
         Ok(())
     }
@@ -350,7 +376,7 @@ impl LcdClock {
                     display,
                     thickness,
                     h - thickness,
-                    w - w * thickness,
+                    w - thickness,
                     h,
                     color,
                 )?;
@@ -399,6 +425,34 @@ impl LcdClock {
         }
 
         self.last_time = time;
+
+        Ok(())
+    }
+
+    fn mode_rgb(&mut self, force_update: bool) -> Result<(), Error> {
+        let colors = match self.state.led_strip.mode() {
+            LedMode::Sin => [
+                ColorRGB8::red(),
+                ColorRGB8::green(),
+                ColorRGB8::blue(),
+                ColorRGB8::cyan(),
+                ColorRGB8::yellow(),
+                ColorRGB8::pink(),
+            ],
+            LedMode::Off => [ColorRGB8::black(); LED_COUNT],
+            LedMode::Red => [ColorRGB8::red(); LED_COUNT],
+            LedMode::Green => [ColorRGB8::green(); LED_COUNT],
+            LedMode::Blue => [ColorRGB8::blue(); LED_COUNT],
+            LedMode::Cyan => [ColorRGB8::cyan(); LED_COUNT],
+            LedMode::Yellow => [ColorRGB8::yellow(); LED_COUNT],
+            LedMode::Pink => [ColorRGB8::pink(); LED_COUNT],
+        };
+
+        if force_update {
+            for (display, color) in Display::all().zip(colors) {
+                self.hardware.display_fill(display, color.into())?;
+            }
+        }
 
         Ok(())
     }
