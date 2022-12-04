@@ -114,6 +114,11 @@ impl LedStripState {
                 let val = 1.0;
 
                 let rgb = hsv2rgb_u8(hue, sat, val);
+                let rgb = (
+                    ((rgb.0 as u16 * self.brightness as u16) / 0xff) as u8,
+                    ((rgb.1 as u16 * self.brightness as u16) / 0xff) as u8,
+                    ((rgb.2 as u16 * self.brightness as u16) / 0xff) as u8,
+                );
                 *led = rgb.into();
             }
 
