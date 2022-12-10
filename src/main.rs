@@ -80,6 +80,7 @@ fn main() -> ! {
         )
     };
 
+    let brightness = 5;
     let st7789vw = {
         let csa1 = pins.gpio2.into_push_pull_output();
         let csa2 = pins.gpio3.into_push_pull_output();
@@ -112,7 +113,7 @@ fn main() -> ! {
             channel,
             st7789vwx6::WIDTH,
             st7789vwx6::HEIGHT,
-            u16::MAX / 5,
+            u16::MAX / 10 * brightness,
         )
     };
 
@@ -147,7 +148,7 @@ fn main() -> ! {
     );
 
     let sin = hal::rom_data::float_funcs::fsin::ptr();
-    let mut lcd_clock = LcdClock::new(hardware, sin);
+    let mut lcd_clock = LcdClock::new(hardware, sin, brightness as u32);
 
     // delay for 2ms so displays are initialized
     cortex_m::asm::delay(125 * 1000 * 20);

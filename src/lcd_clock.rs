@@ -23,15 +23,19 @@ pub struct LcdClock {
     /// update
     last_time: Time,
     last_date: Date,
+    last_brightness: u32,
 }
 
 impl LcdClock {
-    pub fn new(hardware: LcdClockHardware, sin: Sin) -> Self {
+    pub fn new(hardware: LcdClockHardware, sin: Sin, brightness: u32) -> Self {
+        let state = State::new(sin, brightness);
+        let last_brightness = brightness;
         Self {
             hardware,
-            state: State::new(sin),
+            state,
             last_time: Default::default(),
             last_date: Default::default(),
+            last_brightness,
         }
     }
 
@@ -43,6 +47,7 @@ impl LcdClock {
     pub fn update(&mut self) -> Result<(), Error> {
         self.update_buttons();
 
+        let brightness = self.state.brightness();
         let transition = self.state.eat_transition();
         match self.state.mode() {
             AppMode::Regular(screen) => match screen {
@@ -55,7 +60,14 @@ impl LcdClock {
             },
             AppMode::Menu(menu) => self.mode_menu(menu, transition)?,
             AppMode::SetRgb => self.mode_rgb(transition)?,
+            AppMode::SetBrightness => self.mode_brightness(transition, brightness)?,
             _ => {}
+        }
+
+        if brightness != self.last_brightness {
+            self.last_brightness = brightness;
+            let brightness_mapped = (u16::MAX / 10) * brightness as u16;
+            self.hardware.displays.set_brightness(brightness_mapped);
         }
 
         // TODO: dynamic update time (using rtc or system timer)
@@ -167,6 +179,18 @@ impl LcdClock {
         if force_update {
             for (display, color) in Display::all().zip(colors) {
                 self.hardware.with_gl(|gl| gl.fill(display, color.into()))?;
+            }
+        }
+
+        Ok(())
+    }
+
+    fn mode_brightness(&mut self, force_update: bool, brightness: u32) -> Result<(), Error> {
+        if force_update {
+            for display in Display::all() {
+                if let Some(pic) = NUMPIC_A.get_digit(brightness as u8) {
+                    self.hardware.with_gl(|gl| gl.draw_pic(display, pic))?;
+                }
             }
         }
 

@@ -96,6 +96,8 @@ pub struct State {
     mode: AppMode,
     /// Led strip has state on its own in order to create animations
     led_strip: LedStripState,
+    /// Brightness of display (from 0 to 10)
+    brightness: u32,
     /// Has state transition occured? Application can use this information in
     /// order to decide whether to redraw or not.
     transition: bool,
@@ -104,10 +106,11 @@ pub struct State {
 }
 
 impl State {
-    pub fn new(sin: Sin) -> Self {
+    pub fn new(sin: Sin, brightness: u32) -> Self {
         Self {
             mode: AppMode::Regular(Default::default()),
             led_strip: LedStripState::new(sin),
+            brightness,
             transition: true,
             is_mode_down: false,
         }
@@ -119,6 +122,10 @@ impl State {
 
     pub fn mode(&self) -> AppMode {
         self.mode
+    }
+
+    pub fn brightness(&self) -> u32 {
+        self.brightness
     }
 
     pub fn eat_transition(&mut self) -> bool {
@@ -184,7 +191,7 @@ impl State {
                 }
 
                 if mode {
-                    self.transition_regular();
+                    self.transition(AppMode::Regular(Default::default()));
                 }
             }
             AppMode::SetAlarm(screen) => {
@@ -221,7 +228,18 @@ impl State {
                 }
             }
             AppMode::SetBrightness => {
-                todo!()
+                if mode {
+                    self.transition_regular();
+                }
+
+                if left {
+                    self.brightness = self.brightness.saturating_sub(1);
+                    self.transition = true;
+                }
+                if right {
+                    self.brightness = core::cmp::min(9, self.brightness + 1);
+                    self.transition = true;
+                }
             }
             AppMode::TempHumidity => {
                 todo!()
