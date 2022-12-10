@@ -53,8 +53,8 @@ impl From<Day> for u8 {
     }
 }
 
-#[derive(Debug)]
-pub struct Calendar {
+#[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Default, Clone, Copy)]
+pub struct Date {
     pub year: u16,
     pub month: u8,
     pub date: u8,
@@ -246,11 +246,11 @@ where
         Ok(Temperature(high << 2 | (low >> 6)))
     }
 
-    pub fn get_calendar(&mut self) -> Result<Calendar, Error> {
+    pub fn get_calendar(&mut self) -> Result<Date, Error> {
         let year = self.get_year()?;
         let month = self.get_month()?;
         let date = self.get_date()?;
-        Ok(Calendar { year, month, date })
+        Ok(Date { year, month, date })
     }
 
     pub fn get_time(&mut self) -> Result<Time, Error> {

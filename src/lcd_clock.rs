@@ -1,7 +1,11 @@
 //! General project-wide functionality
 use crate::{
-    drivers::{bme280, ds3231, ds3231::Time, st7789vwx6, st7789vwx6::Display},
-    gl::Gl,
+    drivers::{
+        bme280, ds3231,
+        ds3231::{Date, Time},
+        st7789vwx6,
+        st7789vwx6::Display,
+    },
     hardware::LcdClockHardware,
     images::{MENUPIC_A, NUMPIC_A},
     led_strip::{LedMode, LED_COUNT},
@@ -16,6 +20,7 @@ pub struct LcdClock {
     /// Used as comparator value needed to decide which displays we want to
     /// update
     last_time: Time,
+    last_date: Date,
 }
 
 impl LcdClock {
@@ -24,6 +29,7 @@ impl LcdClock {
             hardware,
             state: State::new(sin),
             last_time: Default::default(),
+            last_date: Default::default(),
         }
     }
 
@@ -36,6 +42,19 @@ impl LcdClock {
         self.update_buttons();
 
         let transition = self.state.eat_transition();
+        match self.state.mode() {
+            AppMode::Regular(screen) => match screen {
+                TimeDateScreen::Time => {
+                    self.mode_time(transition)?;
+                }
+                TimeDateScreen::Date => {
+                    self.mode_date(transition)?;
+                }
+            },
+            AppMode::Menu(menu) => self.mode_menu(menu, transition)?,
+            AppMode::SetRgb => self.mode_rgb(transition)?,
+            _ => {}
+        }
 
         // TODO: dynamic update time (using rtc or system timer)
         cortex_m::asm::delay(125 * 1000 * 16);
@@ -47,7 +66,11 @@ impl LcdClock {
         Ok(())
     }
 
-    fn mode_menu(&mut self, selected_mode: MenuOption) -> Result<(), Error> {
+    fn mode_menu(&mut self, selected_mode: MenuOption, force_update: bool) -> Result<(), Error> {
+        if !force_update {
+            return Ok(());
+        }
+
         for (mode, display) in MenuOption::all().zip(Display::all()) {
             let pic = MENUPIC_A.get_pic(mode);
             self.hardware.with_gl(|gl| gl.draw_pic(display, pic))?;

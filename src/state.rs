@@ -24,6 +24,7 @@ impl TimeDateScreen {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+/// All possible choices in main menu
 pub enum MenuOption {
     /// Set time and date
     SetTime,
@@ -77,6 +78,7 @@ impl MenuOption {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+/// All possible application states
 pub enum AppMode {
     Regular(TimeDateScreen),
     Menu(MenuOption),
@@ -143,33 +145,27 @@ impl State {
         match self.mode {
             AppMode::Regular(screen) => {
                 if mode {
-                    self.mode = AppMode::Menu(MenuOption::Return);
-                    self.transition = true;
+                    self.transition(AppMode::Menu(MenuOption::Return));
                 } else if left {
-                    self.mode = AppMode::Regular(screen.left());
-                    self.transition = true;
+                    self.transition(AppMode::Regular(screen.left()));
                 } else if right {
-                    self.mode = AppMode::Regular(screen.right());
-                    self.transition = true;
+                    self.transition(AppMode::Regular(screen.right()));
                 }
             }
             AppMode::Menu(menu) => {
                 if mode {
-                    self.mode = match menu {
+                    self.transition(match menu {
                         MenuOption::Return => AppMode::Regular(Default::default()),
                         MenuOption::SetTime => AppMode::SetTime(Default::default()),
                         MenuOption::SetAlarm => AppMode::SetAlarm(Default::default()),
                         MenuOption::SetRgb => AppMode::SetRgb,
                         MenuOption::SetBrightness => AppMode::SetBrightness,
                         MenuOption::TempHumidity => AppMode::TempHumidity,
-                    };
-                    self.transition = true;
+                    });
                 } else if left {
-                    self.mode = AppMode::Menu(menu.left());
-                    self.transition = true;
+                    self.transition(AppMode::Menu(menu.left()));
                 } else if right {
-                    self.mode = AppMode::Menu(menu.right());
-                    self.transition = true;
+                    self.transition(AppMode::Menu(menu.right()));
                 }
             }
             AppMode::SetTime(screen) => {
@@ -179,17 +175,16 @@ impl State {
                     } else if right {
                         todo!()
                     }
-                } else if left {
-                    self.mode = AppMode::SetTime(screen.left());
-                    self.transition = true;
-                } else if right {
-                    self.mode = AppMode::SetTime(screen.right());
-                    self.transition = true;
+                } else {
+                    if left {
+                        self.transition(AppMode::SetTime(screen.left()));
+                    } else if right {
+                        self.transition(AppMode::SetTime(screen.right()));
+                    }
                 }
 
                 if mode {
-                    self.mode = AppMode::Regular(Default::default());
-                    self.transition = true;
+                    self.transition_regular();
                 }
             }
             AppMode::SetAlarm(screen) => {
@@ -199,20 +194,23 @@ impl State {
                     } else if right {
                         todo!()
                     }
-                } else if left {
-                    self.mode = AppMode::SetAlarm(screen.left());
-                    self.transition = true;
-                } else if right {
-                    self.mode = AppMode::SetAlarm(screen.right());
-                    self.transition = true;
+                }
+                if left {
+                    self.transition(AppMode::SetAlarm(screen.left()));
+                }
+                if right {
+                    self.transition(AppMode::SetAlarm(screen.right()));
                 }
 
                 if mode {
-                    self.mode = AppMode::Regular(Default::default());
-                    self.transition = true;
+                    self.transition_regular();
                 }
             }
             AppMode::SetRgb => {
+                if mode {
+                    self.transition_regular();
+                }
+
                 if left {
                     self.led_strip.left();
                     self.transition = true;
@@ -233,5 +231,14 @@ impl State {
 
     pub fn update(&mut self) {
         self.led_strip.update();
+    }
+
+    fn transition(&mut self, mode: AppMode) {
+        self.mode = mode;
+        self.transition = true;
+    }
+
+    fn transition_regular(&mut self) {
+        self.transition(AppMode::Regular(Default::default()));
     }
 }
