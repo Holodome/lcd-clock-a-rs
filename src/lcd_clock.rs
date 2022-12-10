@@ -1,4 +1,6 @@
 //! General project-wide functionality
+use core::borrow::Borrow;
+
 use crate::{
     drivers::{
         bme280, ds3231,
@@ -119,7 +121,28 @@ impl LcdClock {
     }
 
     fn mode_date(&mut self, force_update: bool) -> Result<(), Error> {
-        todo!()
+        let date = self
+            .hardware
+            .with_rtc(|rtc| rtc.get_calendar())?
+            .map_err(Error::Rtc)?;
+
+        let date_displays = date_to_display_values(date);
+        let prev_date_displays = date_to_display_values(self.last_date);
+        for ((display, &cur), &prev) in Display::all()
+            .into_iter()
+            .zip(date_displays.iter())
+            .zip(prev_date_displays.iter())
+        {
+            if cur != prev || force_update {
+                if let Some(pic) = NUMPIC_A.get_digit(cur) {
+                    self.hardware.with_gl(|gl| gl.draw_pic(display, pic))?;
+                }
+            }
+        }
+
+        self.last_date = date;
+
+        Ok(())
     }
 
     fn mode_rgb(&mut self, force_update: bool) -> Result<(), Error> {
@@ -179,4 +202,15 @@ fn time_to_display_values(time: Time) -> [u8; 6] {
     let secb = time.secs % 10;
 
     [houra, hourb, mina, minb, seca, secb]
+}
+
+fn date_to_display_values(date: Date) -> [u8; 6] {
+    let yeara = (date.year % 100) / 10;
+    let yearb = date.year % 10;
+    let montha = date.month / 10;
+    let monthb = date.month % 10;
+    let datea = date.date / 10;
+    let dateb = date.date % 10;
+
+    [yeara as u8, yearb as u8, montha, monthb, datea, dateb]
 }
