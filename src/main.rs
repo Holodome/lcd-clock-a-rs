@@ -2,7 +2,8 @@
 #![no_main]
 
 use drivers::buttons::{Button, Debounce};
-use lcd_clock::{LcdClock, LcdClockHardware};
+use hardware::LcdClockHardware;
+use lcd_clock::LcdClock;
 #[cfg(not(feature = "semihosting"))]
 use panic_halt as _;
 #[cfg(feature = "semihosting")]
@@ -31,10 +32,13 @@ use rp_pico::{
 
 mod bell;
 mod drivers;
+mod gl;
+mod hardware;
 mod images;
 mod lcd_clock;
 mod led_strip;
 mod misc;
+mod state;
 
 use crate::drivers::{
     st7789vwx6::{self, ST7789VWx6},

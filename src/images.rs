@@ -2,7 +2,7 @@
 //! These are embedded directly in executable using include_bytes!.
 //! Images are generated using build script (build.rs).
 
-use crate::lcd_clock::AppMode;
+use crate::state::MenuOption;
 
 pub struct Image(&'static [u8]);
 
@@ -39,7 +39,6 @@ impl Numpic {
 
 macro_rules! make_numpic_img {
     ($letter:literal, $num:literal) => {
-        // make_image(&[0])
         make_image(include_bytes!(concat!(
             "../target/img/numpic/",
             $letter,
@@ -75,21 +74,20 @@ make_numpic!(NUMPIC_A, "A");
 pub struct Menupic([Image; 6]);
 
 impl Menupic {
-    pub fn get_pic(&self, opt: AppMode) -> &Image {
+    pub fn get_pic(&self, opt: MenuOption) -> &Image {
         match opt {
-            AppMode::Time => &self.0[0],
-            AppMode::Alarm => &self.0[1],
-            AppMode::Rgb => &self.0[2],
-            AppMode::Brightness => &self.0[3],
-            AppMode::TempHumidity => &self.0[4],
-            AppMode::Return => &self.0[5],
+            MenuOption::SetTime => &self.0[0],
+            MenuOption::SetAlarm => &self.0[1],
+            MenuOption::SetRgb => &self.0[2],
+            MenuOption::SetBrightness => &self.0[3],
+            MenuOption::TempHumidity => &self.0[4],
+            MenuOption::Return => &self.0[5],
         }
     }
 }
 
 macro_rules! make_menupic_img {
     ($letter:literal, $num:literal) => {
-        // make_image(&[0])
         make_image(include_bytes!(concat!(
             "../target/img/menupic/",
             $letter,

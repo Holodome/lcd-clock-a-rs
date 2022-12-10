@@ -178,7 +178,7 @@ where
         let mode = extract_hour_info(self.read_reg(Register::Hours)?);
         let hours = match mode {
             HourInfo::H12PM | HourInfo::H12AM => {
-                H12_BIT | if hours >= 12 { PM_BIT } else { 0 } | hours % 12
+                H12_BIT | if hours >= 12 { PM_BIT } else { 0 } | (hours % 12)
             }
             HourInfo::H24 => hours.dec_to_bsd(),
         };
