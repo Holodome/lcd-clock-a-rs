@@ -112,7 +112,7 @@ pub struct State {
     /// changed, otherwise mode button changes mode.
     lr_pressed_while_mode_down: bool,
 
-    time_delta: Option<(usize, i32)>,
+    time_delta: Option<(usize, i8)>,
 }
 
 impl State {
@@ -130,7 +130,7 @@ impl State {
         }
     }
 
-    pub fn take_time_delta(&mut self) -> Option<(usize, i32)> {
+    pub fn take_time_delta(&mut self) -> Option<(usize, i8)> {
         self.time_delta.take()
     }
 

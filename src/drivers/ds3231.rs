@@ -196,11 +196,11 @@ where
     }
 
     pub fn get_date(&mut self) -> Result<u8, Error> {
-        self.read_reg(Register::Days).map(|d| d.bcd_to_dec())
+        self.read_reg(Register::Date).map(|d| d.bcd_to_dec())
     }
 
     pub fn set_date(&mut self, date: u8) -> Result<(), Error> {
-        if (0..31).contains(&date) {
+        if (0..=31).contains(&date) {
             self.write_reg(Register::Date, date.dec_to_bsd())
         } else {
             Err(Error::DateRange)
@@ -213,7 +213,7 @@ where
 
     pub fn set_month(&mut self, month: u8) -> Result<(), Error> {
         let century_bit = self.read_reg(Register::Month)? & CENTURY_BIT;
-        if (1..12).contains(&month) {
+        if (1..=12).contains(&month) {
             self.write_reg(Register::Month, month | century_bit)
         } else {
             Err(Error::MonthRange)

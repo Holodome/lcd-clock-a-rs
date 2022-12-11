@@ -49,7 +49,6 @@ impl LcdClock {
 
         let brightness = self.state.brightness();
         let transition = self.state.eat_transition();
-        let time_delta = self.state.take_time_delta();
         match self.state.mode() {
             AppMode::Regular(screen) => match screen {
                 TimeDateScreen::Time => {
@@ -65,6 +64,15 @@ impl LcdClock {
             AppMode::SetRgb => self.mode_rgb(transition)?,
             AppMode::SetBrightness => self.mode_brightness(transition, brightness)?,
             _ => {}
+        }
+
+        if let Some(time_delta) = self.state.take_time_delta() {
+            let (index, change) = time_delta;
+            if matches!(self.state.mode(), AppMode::SetTime(..)) {
+                self.change_time(index, change)?;
+            } else {
+                // self.change_alarm(index, change)?;
+            }
         }
 
         if brightness != self.last_brightness {
@@ -106,8 +114,6 @@ impl LcdClock {
             self.hardware.with_gl(|gl| gl.draw_pic(display, pic))?;
 
             if mode == selected_mode {
-                let w = self.hardware.displays.width();
-                let h = self.hardware.displays.height();
                 let thickness = 8;
                 let color = ColorRGB565::from(ColorRGB8::red());
                 self.hardware
@@ -119,6 +125,8 @@ impl LcdClock {
     }
 
     fn mode_set_time(&mut self, screen_index: usize, force_update: bool) -> Result<(), Error> {
+        // here we don't save time by not redrawing all displays because settings time
+        // is such unfrequent operation that we practically don't care
         if screen_index < 6 {
             self.mode_time(force_update)?;
         } else {
@@ -134,8 +142,6 @@ impl LcdClock {
             5 => Display::D6,
             _ => Display::D1,
         };
-        let w = self.hardware.displays.width();
-        let h = self.hardware.displays.height();
         let thickness = 8;
         let color = ColorRGB565::from(ColorRGB8::red());
         self.hardware
@@ -243,6 +249,71 @@ impl LcdClock {
             left_button_transition,
             right_button_transition,
         );
+    }
+
+    fn change_time(&mut self, index: usize, change: i8) -> Result<(), Error> {
+        if index < 6 {
+            let time = self
+                .hardware
+                .with_rtc(|rtc| rtc.get_time())?
+                .map_err(Error::Rtc)?;
+            let mut new_time = time;
+            match index {
+                0 => new_time.hours = time.hours.saturating_add_signed(change * 10),
+                1 => new_time.hours = time.hours.saturating_add_signed(change * 1),
+                2 => new_time.mins = time.mins.saturating_add_signed(change * 10),
+                3 => new_time.mins = time.mins.saturating_add_signed(change * 1),
+                4 => new_time.secs = time.secs.saturating_add_signed(change * 10),
+                5 => new_time.secs = time.secs.saturating_add_signed(change * 1),
+                _ => {}
+            }
+            new_time.hours %= 24;
+            new_time.mins %= 60;
+            new_time.secs %= 60;
+            if new_time.hours != time.hours {
+                self.hardware
+                    .with_rtc(|rtc| rtc.set_hours(new_time.hours))?
+                    .map_err(Error::Rtc)?;
+            } else if new_time.mins != time.mins {
+                self.hardware
+                    .with_rtc(|rtc| rtc.set_mins(new_time.mins))?
+                    .map_err(Error::Rtc)?;
+            } else {
+                self.hardware
+                    .with_rtc(|rtc| rtc.set_secs(new_time.secs))?
+                    .map_err(Error::Rtc)?;
+            }
+        } else {
+            let date = self
+                .hardware
+                .with_rtc(|rtc| rtc.get_calendar())?
+                .map_err(Error::Rtc)?;
+            let mut new_date = date;
+            match index % 6 {
+                0 => new_date.year = date.year.saturating_add_signed(change as i16 * 10),
+                1 => new_date.year = date.year.saturating_add_signed(change as i16 * 1),
+                2 => new_date.month = date.month.saturating_add_signed(change * 10),
+                3 => new_date.month = date.month.saturating_add_signed(change * 1),
+                4 => new_date.date = date.date.saturating_add_signed(change * 10),
+                5 => new_date.date = date.date.saturating_add_signed(change * 1),
+                _ => {}
+            }
+            if new_date.year != date.year {
+                self.hardware
+                    .with_rtc(|rtc| rtc.set_year(new_date.year))?
+                    .ok();
+            } else if new_date.month != date.month {
+                self.hardware
+                    .with_rtc(|rtc| rtc.set_month(new_date.month))?
+                    .ok();
+            } else {
+                self.hardware
+                    .with_rtc(|rtc| rtc.set_date(new_date.date))?
+                    .ok();
+            }
+        }
+
+        Ok(())
     }
 }
 
