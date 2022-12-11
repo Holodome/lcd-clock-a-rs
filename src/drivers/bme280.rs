@@ -387,6 +387,5 @@ enum Register {
 pub enum Error {
     BusRead,
     BusWrite,
-    NotInitialized,
     WrongChipId,
 }

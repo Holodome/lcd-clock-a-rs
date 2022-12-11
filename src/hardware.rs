@@ -44,6 +44,8 @@ pub type RightBtnTy = Button<Pin<Gpio16, PullDownInput>>;
 pub type ModeBtnTy = Button<Pin<Gpio17, PullDownInput>>;
 pub type BuzzerTy = ();
 
+/// Hardware of clock. It is basically a collection of drivers. Its
+/// functionality loosely corresponds to Model in MVC.
 pub struct LcdClockHardware {
     i2c_bus: Option<I2CBusTy>,
     rtc: Option<DS3231State>,

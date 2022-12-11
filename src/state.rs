@@ -90,8 +90,10 @@ pub enum AppMode {
 }
 
 /// State of application. It tries to store all things that may change based
-/// on user input and modify it in a single place.
+/// on user input and modify it in a single place. It loosely corresponds to
+/// Controller in MVC.
 pub struct State {
+    last_mode: AppMode,
     /// FSM for application mode. It basically enumerates all possible screens.
     mode: AppMode,
     /// Led strip has state on its own in order to create animations
@@ -107,8 +109,10 @@ pub struct State {
 
 impl State {
     pub fn new(sin: Sin, brightness: u32) -> Self {
+        let mode = AppMode::Regular(Default::default());
         Self {
-            mode: AppMode::Regular(Default::default()),
+            mode,
+            last_mode: mode,
             led_strip: LedStripState::new(sin),
             brightness,
             transition: true,
@@ -118,6 +122,10 @@ impl State {
 
     pub fn led_strip(&self) -> &LedStripState {
         &self.led_strip
+    }
+
+    pub fn last_mode(&self) -> AppMode {
+        self.last_mode
     }
 
     pub fn mode(&self) -> AppMode {
@@ -140,6 +148,8 @@ impl State {
         left: Option<ButtonEvent>,
         right: Option<ButtonEvent>,
     ) {
+        self.last_mode = self.mode;
+
         match mode {
             Some(ButtonEvent::Release) => self.is_mode_down = false,
             Some(ButtonEvent::Press) => self.is_mode_down = true,
@@ -182,16 +192,14 @@ impl State {
                     } else if right {
                         todo!()
                     }
-                } else {
-                    if left {
-                        self.transition(AppMode::SetTime(screen.left()));
-                    } else if right {
-                        self.transition(AppMode::SetTime(screen.right()));
-                    }
+                } else if left {
+                    self.transition(AppMode::SetTime(screen.left()));
+                } else if right {
+                    self.transition(AppMode::SetTime(screen.right()));
                 }
 
                 if mode {
-                    self.transition(AppMode::Regular(Default::default()));
+                    self.transition_regular();
                 }
             }
             AppMode::SetAlarm(screen) => {
@@ -201,12 +209,12 @@ impl State {
                     } else if right {
                         todo!()
                     }
-                }
-                if left {
-                    self.transition(AppMode::SetAlarm(screen.left()));
-                }
-                if right {
-                    self.transition(AppMode::SetAlarm(screen.right()));
+                } else {
+                    if left {
+                        self.transition(AppMode::SetAlarm(screen.left()));
+                    } else if right {
+                        self.transition(AppMode::SetAlarm(screen.right()));
+                    }
                 }
 
                 if mode {
@@ -214,31 +222,29 @@ impl State {
                 }
             }
             AppMode::SetRgb => {
-                if mode {
-                    self.transition_regular();
-                }
-
                 if left {
                     self.led_strip.left();
                     self.transition = true;
-                }
-                if right {
+                } else if right {
                     self.led_strip.right();
                     self.transition = true;
                 }
-            }
-            AppMode::SetBrightness => {
+
                 if mode {
                     self.transition_regular();
                 }
-
+            }
+            AppMode::SetBrightness => {
                 if left {
                     self.brightness = self.brightness.saturating_sub(1);
                     self.transition = true;
-                }
-                if right {
+                } else if right {
                     self.brightness = core::cmp::min(9, self.brightness + 1);
                     self.transition = true;
+                }
+
+                if mode {
+                    self.transition_regular();
                 }
             }
             AppMode::TempHumidity => {

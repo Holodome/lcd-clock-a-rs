@@ -365,7 +365,6 @@ impl<
 
 #[derive(Debug)]
 pub enum Error {
-    OutOfBounds,
     BusWrite,
 }
 

@@ -1,5 +1,4 @@
 //! General project-wide functionality
-use core::borrow::Borrow;
 
 use crate::{
     drivers::{
@@ -15,6 +14,7 @@ use crate::{
     state::{AppMode, MenuOption, State, TimeDateScreen},
 };
 
+/// Main application. Its functionality loosely corresponds to View in MVC.
 pub struct LcdClock {
     hardware: LcdClockHardware,
     state: State,
@@ -85,7 +85,20 @@ impl LcdClock {
             return Ok(());
         }
 
+        let last_mode = self.state.last_mode();
+        let last_mode = match last_mode {
+            AppMode::Menu(menu) => Some(menu),
+            _ => None,
+        };
+
         for (mode, display) in MenuOption::all().zip(Display::all()) {
+            // avoid redrawing screens that did not change
+            if let Some(last_mode) = last_mode {
+                if last_mode != mode && mode != selected_mode {
+                    continue;
+                }
+            }
+
             let pic = MENUPIC_A.get_pic(mode);
             self.hardware.with_gl(|gl| gl.draw_pic(display, pic))?;
 
