@@ -388,4 +388,5 @@ pub enum Error {
     BusRead,
     BusWrite,
     WrongChipId,
+    NotInitialized,
 }

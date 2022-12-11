@@ -49,6 +49,7 @@ impl LcdClock {
 
         let brightness = self.state.brightness();
         let transition = self.state.eat_transition();
+        let time_delta = self.state.take_time_delta();
         match self.state.mode() {
             AppMode::Regular(screen) => match screen {
                 TimeDateScreen::Time => {
@@ -59,6 +60,8 @@ impl LcdClock {
                 }
             },
             AppMode::Menu(menu) => self.mode_menu(menu, transition)?,
+            AppMode::SetTime(screen_index) => self.mode_set_time(screen_index, transition)?,
+            AppMode::SetAlarm(screen_index) => self.mode_set_time(screen_index, transition)?,
             AppMode::SetRgb => self.mode_rgb(transition)?,
             AppMode::SetBrightness => self.mode_brightness(transition, brightness)?,
             _ => {}
@@ -107,14 +110,36 @@ impl LcdClock {
                 let h = self.hardware.displays.height();
                 let thickness = 8;
                 let color = ColorRGB565::from(ColorRGB8::red());
-                self.hardware.with_gl(|gl| {
-                    gl.draw_rect(display, 0, 0, w, thickness, color)?;
-                    gl.draw_rect(display, 0, thickness, thickness, h, color)?;
-                    gl.draw_rect(display, w - thickness, thickness, w, h, color)?;
-                    gl.draw_rect(display, thickness, h - thickness, w - thickness, h, color)
-                })?;
+                self.hardware
+                    .with_gl(|gl| gl.draw_bounding_rect(display, thickness, color))?;
             }
         }
+
+        Ok(())
+    }
+
+    fn mode_set_time(&mut self, screen_index: usize, force_update: bool) -> Result<(), Error> {
+        if screen_index < 6 {
+            self.mode_time(force_update)?;
+        } else {
+            self.mode_date(force_update)?;
+        }
+
+        let display = match screen_index % 6 {
+            0 => Display::D1,
+            1 => Display::D2,
+            2 => Display::D3,
+            3 => Display::D4,
+            4 => Display::D5,
+            5 => Display::D6,
+            _ => Display::D1,
+        };
+        let w = self.hardware.displays.width();
+        let h = self.hardware.displays.height();
+        let thickness = 8;
+        let color = ColorRGB565::from(ColorRGB8::red());
+        self.hardware
+            .with_gl(|gl| gl.draw_bounding_rect(display, thickness, color))?;
 
         Ok(())
     }

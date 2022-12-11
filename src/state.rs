@@ -82,8 +82,8 @@ impl MenuOption {
 pub enum AppMode {
     Regular(TimeDateScreen),
     Menu(MenuOption),
-    SetTime(TimeDateScreen),
-    SetAlarm(TimeDateScreen),
+    SetTime(usize),
+    SetAlarm(usize),
     SetRgb,
     SetBrightness,
     TempHumidity,
@@ -93,6 +93,8 @@ pub enum AppMode {
 /// on user input and modify it in a single place. It loosely corresponds to
 /// Controller in MVC.
 pub struct State {
+    /// Store last mode before changing. Application may use this information in
+    /// order to redraw more effeciently.
     last_mode: AppMode,
     /// FSM for application mode. It basically enumerates all possible screens.
     mode: AppMode,
@@ -105,6 +107,12 @@ pub struct State {
     transition: bool,
     /// Is mode button down?
     is_mode_down: bool,
+    /// Flag used to determine behaviour while setting time/alarm. In this cases
+    /// if mode was held and either of left or right pressed the time is
+    /// changed, otherwise mode button changes mode.
+    lr_pressed_while_mode_down: bool,
+
+    time_delta: Option<(usize, i32)>,
 }
 
 impl State {
@@ -117,7 +125,13 @@ impl State {
             brightness,
             transition: true,
             is_mode_down: false,
+            lr_pressed_while_mode_down: false,
+            time_delta: None,
         }
+    }
+
+    pub fn take_time_delta(&mut self) -> Option<(usize, i32)> {
+        self.time_delta.take()
     }
 
     pub fn led_strip(&self) -> &LedStripState {
@@ -152,7 +166,10 @@ impl State {
 
         match mode {
             Some(ButtonEvent::Release) => self.is_mode_down = false,
-            Some(ButtonEvent::Press) => self.is_mode_down = true,
+            Some(ButtonEvent::Press) => {
+                self.is_mode_down = true;
+                self.lr_pressed_while_mode_down = false;
+            }
             _ => {}
         }
 
@@ -160,13 +177,15 @@ impl State {
         let left = matches!(left, Some(ButtonEvent::Release));
         let right = matches!(right, Some(ButtonEvent::Release));
         match self.mode {
-            AppMode::Regular(screen) => {
+            AppMode::Regular(ref mut screen) => {
                 if mode {
                     self.transition(AppMode::Menu(MenuOption::Return));
                 } else if left {
-                    self.transition(AppMode::Regular(screen.left()));
+                    *screen = screen.left();
+                    self.transition = true;
                 } else if right {
-                    self.transition(AppMode::Regular(screen.right()));
+                    *screen = screen.right();
+                    self.transition = true;
                 }
             }
             AppMode::Menu(menu) => {
@@ -185,39 +204,61 @@ impl State {
                     self.transition(AppMode::Menu(menu.right()));
                 }
             }
-            AppMode::SetTime(screen) => {
+            AppMode::SetTime(ref mut screen_index) => {
                 if self.is_mode_down {
                     if left {
-                        todo!()
+                        self.time_delta = Some((*screen_index, -1));
+                        self.lr_pressed_while_mode_down = true;
                     } else if right {
-                        todo!()
+                        self.time_delta = Some((*screen_index, 1));
+                        self.lr_pressed_while_mode_down = true;
                     }
                 } else if left {
-                    self.transition(AppMode::SetTime(screen.left()));
+                    if *screen_index == 0 {
+                        *screen_index = 11;
+                    } else {
+                        *screen_index -= 1;
+                    }
+                    self.transition = true;
                 } else if right {
-                    self.transition(AppMode::SetTime(screen.right()));
+                    if *screen_index == 11 {
+                        *screen_index = 0;
+                    } else {
+                        *screen_index += 1;
+                    }
+                    self.transition = true;
                 }
 
-                if mode {
+                if mode && !self.lr_pressed_while_mode_down {
                     self.transition_regular();
                 }
             }
-            AppMode::SetAlarm(screen) => {
+            AppMode::SetAlarm(ref mut screen_index) => {
                 if self.is_mode_down {
                     if left {
-                        todo!()
+                        self.time_delta = Some((*screen_index, -1));
+                        self.lr_pressed_while_mode_down = true;
                     } else if right {
-                        todo!()
+                        self.time_delta = Some((*screen_index, 1));
+                        self.lr_pressed_while_mode_down = true;
                     }
-                } else {
-                    if left {
-                        self.transition(AppMode::SetAlarm(screen.left()));
-                    } else if right {
-                        self.transition(AppMode::SetAlarm(screen.right()));
+                } else if left {
+                    if *screen_index == 0 {
+                        *screen_index = 11;
+                    } else {
+                        *screen_index -= 1;
                     }
+                    self.transition = true;
+                } else if right {
+                    if *screen_index == 11 {
+                        *screen_index = 0;
+                    } else {
+                        *screen_index += 1;
+                    }
+                    self.transition = true;
                 }
 
-                if mode {
+                if mode && !self.lr_pressed_while_mode_down {
                     self.transition_regular();
                 }
             }

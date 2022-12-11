@@ -66,4 +66,19 @@ impl<'a> Gl<'a> {
             .set_pixels(display, 0, 0, w, h, pix)
             .map_err(Error::Display)
     }
+
+    pub fn draw_bounding_rect(
+        &mut self,
+        display: Display,
+        thickness: usize,
+        color: ColorRGB565,
+    ) -> Result<(), Error> {
+        let thickness = thickness as u16;
+        let w = self.displays.width();
+        let h = self.displays.height();
+        self.draw_rect(display, 0, 0, w, thickness, color)?;
+        self.draw_rect(display, 0, thickness, thickness, h, color)?;
+        self.draw_rect(display, w - thickness, thickness, w, h, color)?;
+        self.draw_rect(display, thickness, h - thickness, w - thickness, h, color)
+    }
 }
